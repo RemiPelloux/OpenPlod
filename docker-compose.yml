@@ -1,0 +1,13 @@
+services:
+  plaud-app:
+    build: .
+    ports:
+      - "3456:3456"
+    volumes:
+      - ./data:/app/data
+      - ~/Documents/PlaudSync:/plaud
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    restart: unless-stopped
