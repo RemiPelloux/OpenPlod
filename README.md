@@ -1,7 +1,5 @@
 # Plaud App
 
-> **🌐 Live:** [https://yield-portion-employers-kirk.trycloudflare.com](https://yield-portion-employers-kirk.trycloudflare.com)
-
 Self-hosted transcription and recording management for [Plaud](https://plaud.ai) devices. No subscription needed — bring your own API keys or use local Whisper.
 
 ![Dashboard](screenshots/dashboard.png)
