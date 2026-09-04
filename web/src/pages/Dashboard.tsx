@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Mic, Clock, FileText, AlertCircle, Search, LayoutGrid, List, Loader2 } from 'lucide-react'
+import { Mic, Clock, FileText, AlertCircle, Search, LayoutGrid, List, Loader2, RefreshCw, type LucideIcon } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -15,7 +15,7 @@ const statusColors: Record<string, 'warning' | 'default' | 'success' | 'destruct
   failed: 'destructive',
 }
 
-function StatCard({ icon: Icon, label, value, sub }: { icon: any; label: string; value: string; sub?: string }) {
+function StatCard({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
     <Card>
       <CardContent className="p-5">
@@ -24,7 +24,7 @@ function StatCard({ icon: Icon, label, value, sub }: { icon: any; label: string;
             <Icon className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <p className="text-2xl font-bold tracking-tight">{value}</p>
+            <p className="text-2xl font-bold">{value}</p>
             <p className="text-xs text-muted-foreground">{label}</p>
           </div>
         </div>
@@ -37,26 +37,38 @@ export function Dashboard() {
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('list')
   const [statusFilter, setStatusFilter] = useState<string>('all')
 
-  useEffect(() => {
-    Promise.all([api.getRecordings(), api.getStats()])
-      .then(([recs, s]) => { setRecordings(recs); setStats(s) })
-      .catch(() => {
-        // Use mock data for dev
-        setRecordings(mockRecordings)
-        setStats({ totalRecordings: 43, totalHours: 28.5, transcribedCount: 17, pendingCount: 26 })
-      })
-      .finally(() => setLoading(false))
+  const loadDashboard = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const [recs, nextStats] = await Promise.all([api.getRecordings(), api.getStats()])
+      setRecordings(recs)
+      setStats(nextStats)
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Could not load recordings')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  const filtered = recordings.filter(r => {
+  useEffect(() => {
+    void loadDashboard()
+    window.addEventListener('plaud:sync-complete', loadDashboard)
+    return () => window.removeEventListener('plaud:sync-complete', loadDashboard)
+  }, [loadDashboard])
+
+  const deferredSearch = useDeferredValue(search)
+
+  const filtered = useMemo(() => recordings.filter(r => {
     if (statusFilter !== 'all' && r.status !== statusFilter) return false
-    if (search && !r.title.toLowerCase().includes(search.toLowerCase())) return false
+    if (deferredSearch && !r.title.toLocaleLowerCase().includes(deferredSearch.toLocaleLowerCase())) return false
     return true
-  })
+  }), [deferredSearch, recordings, statusFilter])
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
@@ -93,10 +105,10 @@ export function Dashboard() {
           ))}
         </div>
         <div className="flex gap-1 border rounded-lg p-1">
-          <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="icon" className="h-8 w-8" onClick={() => setView('list')}>
+          <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="icon" className="h-8 w-8" onClick={() => setView('list')} aria-label="List view" title="List view">
             <List className="h-4 w-4" />
           </Button>
-          <Button variant={view === 'grid' ? 'secondary' : 'ghost'} size="icon" className="h-8 w-8" onClick={() => setView('grid')}>
+          <Button variant={view === 'grid' ? 'secondary' : 'ghost'} size="icon" className="h-8 w-8" onClick={() => setView('grid')} aria-label="Grid view" title="Grid view">
             <LayoutGrid className="h-4 w-4" />
           </Button>
         </div>
@@ -106,6 +118,15 @@ export function Dashboard() {
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center py-20 text-center text-muted-foreground" role="alert">
+          <AlertCircle className="mb-3 h-10 w-10 opacity-40" />
+          <p className="font-medium text-foreground">Could not load recordings</p>
+          <p className="mt-1 max-w-md text-sm">{error}</p>
+          <Button variant="outline" size="sm" className="mt-4 gap-2" onClick={() => void loadDashboard()}>
+            <RefreshCw className="h-4 w-4" /> Retry
+          </Button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground">
@@ -160,12 +181,3 @@ export function Dashboard() {
     </div>
   )
 }
-
-const mockRecordings: Recording[] = [
-  { id: '1', title: 'MBA 560 - Business Analytics Lecture', filename: 'rec_001.wav', filePath: '', duration: 4820, fileSize: 48200000, recordingType: 'class', context: null, recordedAt: new Date().toISOString(), createdAt: new Date().toISOString(), status: 'complete', summary: 'Discussion on regression analysis and predictive modeling techniques.' },
-  { id: '2', title: 'Strategy Team Meeting', filename: 'rec_002.wav', filePath: '', duration: 1800, fileSize: 18000000, recordingType: 'meeting', context: null, recordedAt: new Date(Date.now() - 86400000).toISOString(), createdAt: new Date().toISOString(), status: 'complete' },
-  { id: '3', title: 'VC/PE Guest Speaker', filename: 'rec_003.wav', filePath: '', duration: 3600, fileSize: 36000000, recordingType: 'class', context: null, recordedAt: new Date(Date.now() - 172800000).toISOString(), createdAt: new Date().toISOString(), status: 'pending' },
-  { id: '4', title: 'Entrepreneurship Through Acquisition', filename: 'rec_004.wav', filePath: '', duration: 5400, fileSize: 54000000, recordingType: 'class', context: null, recordedAt: new Date(Date.now() - 259200000).toISOString(), createdAt: new Date().toISOString(), status: 'pending' },
-  { id: '5', title: 'Career Strategy Workshop', filename: 'rec_005.wav', filePath: '', duration: 2700, fileSize: 27000000, recordingType: 'meeting', context: null, recordedAt: new Date(Date.now() - 345600000).toISOString(), createdAt: new Date().toISOString(), status: 'complete' },
-  { id: '6', title: 'Innovation Lab Brainstorm', filename: 'rec_006.wav', filePath: '', duration: 1200, fileSize: 12000000, recordingType: 'other', context: null, recordedAt: new Date(Date.now() - 432000000).toISOString(), createdAt: new Date().toISOString(), status: 'failed' },
-]

@@ -16,6 +16,7 @@ export interface Job<T = unknown> {
 type JobHandler<T = unknown> = (data: T) => Promise<void>;
 
 class JobQueue {
+  private static readonly MAX_FINISHED_JOBS = 200;
   private jobs: Job[] = [];
   private handlers: Map<string, JobHandler<any>> = new Map();
   private processing = false;
@@ -68,6 +69,7 @@ class JobQueue {
         job.error = String(err);
         console.error(`[Queue] Job ${job.id} (${job.type}) failed:`, err);
       }
+      this.pruneFinishedJobs();
     }
 
     this.processing = false;
@@ -85,6 +87,15 @@ class JobQueue {
       complete: this.jobs.filter(j => j.status === 'complete').length,
       failed: this.jobs.filter(j => j.status === 'failed').length,
     };
+  }
+
+  private pruneFinishedJobs() {
+    const finished = this.jobs.filter(job => job.status === 'complete' || job.status === 'failed');
+    const overflow = finished.length - JobQueue.MAX_FINISHED_JOBS;
+    if (overflow <= 0) return;
+
+    const expiredIds = new Set(finished.slice(0, overflow).map(job => job.id));
+    this.jobs = this.jobs.filter(job => !expiredIds.has(job.id));
   }
 }
 

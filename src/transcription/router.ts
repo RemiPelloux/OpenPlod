@@ -21,6 +21,11 @@ export interface RouterConfig {
   defaults?: TranscriptionOptions;
 }
 
+export interface ProviderCredentials {
+  groqApiKey?: string;
+  deepgramApiKey?: string;
+}
+
 const DEFAULT_CONFIG: RouterConfig = {
   primary: 'whisper',
   fallback: ['groq', 'deepgram'],
@@ -34,13 +39,13 @@ export class TranscriptionRouter {
   private engines: Map<EngineName, TranscriptionEngine>;
   private config: RouterConfig;
 
-  constructor(config?: Partial<RouterConfig>) {
+  constructor(config?: Partial<RouterConfig>, credentials: ProviderCredentials = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
 
-    this.engines = new Map([
+    this.engines = new Map<EngineName, TranscriptionEngine>([
       ['whisper', new WhisperEngine()],
-      ['groq', new GroqWhisperEngine()],
-      ['deepgram', new DeepgramEngine()],
+      ['groq', new GroqWhisperEngine(credentials.groqApiKey)],
+      ['deepgram', new DeepgramEngine(credentials.deepgramApiKey)],
     ]);
   }
 

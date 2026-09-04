@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Loader2, Sparkles, ListChecks, FileText } from 'lucide-react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Loader2, Sparkles, ListChecks, FileText, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -12,10 +12,31 @@ const speakerColors = [
   'text-violet-400', 'text-cyan-400', 'text-orange-400', 'text-pink-400',
 ]
 
+const waveformHeights = Array.from({ length: 120 }, (_, index) => {
+  const wave = Math.sin(index * 0.31) * 24 + Math.sin(index * 0.73) * 13
+  return Math.max(16, Math.min(92, 48 + wave))
+})
+
+function findActiveSegment(segments: TranscriptSegment[], time: number): TranscriptSegment | undefined {
+  let low = 0
+  let high = segments.length - 1
+
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    const segment = segments[middle]
+    if (time < segment.startTime) high = middle - 1
+    else if (time >= segment.endTime) low = middle + 1
+    else return segment
+  }
+}
+
 export function RecordingDetail() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const [recording, setRecording] = useState<Recording | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [action, setAction] = useState<'transcribing' | 'summarizing' | null>(null)
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -23,19 +44,33 @@ export function RecordingDetail() {
   const waveformRef = useRef<HTMLDivElement>(null)
   const [activeSegment, setActiveSegment] = useState<string | null>(null)
 
-  useEffect(() => {
+  const loadRecording = useCallback(async () => {
     if (!id) return
-    api.getRecording(id)
-      .then(setRecording)
-      .catch(() => setRecording(mockRecording))
-      .finally(() => setLoading(false))
+    setError('')
+    try {
+      setRecording(await api.getRecording(id))
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Could not load recording')
+    } finally {
+      setLoading(false)
+    }
   }, [id])
+
+  useEffect(() => { void loadRecording() }, [loadRecording])
+
+  const speakerMap = useMemo(() => {
+    const nextMap = new Map<string, number>()
+    recording?.segments?.forEach(segment => {
+      if (!nextMap.has(segment.speaker)) nextMap.set(segment.speaker, nextMap.size)
+    })
+    return nextMap
+  }, [recording?.segments])
 
   const togglePlay = useCallback(() => {
     if (!audioRef.current) return
     if (playing) audioRef.current.pause()
-    else audioRef.current.play()
-    setPlaying(!playing)
+    else void audioRef.current.play().catch(() => setPlaying(false))
+    setPlaying(current => !current)
   }, [playing])
 
   const seekTo = useCallback((time: number) => {
@@ -43,7 +78,7 @@ export function RecordingDetail() {
     audioRef.current.currentTime = time
     setCurrentTime(time)
     if (!playing) {
-      audioRef.current.play()
+      void audioRef.current.play().catch(() => setPlaying(false))
       setPlaying(true)
     }
   }, [playing])
@@ -52,9 +87,38 @@ export function RecordingDetail() {
     if (!audioRef.current) return
     const t = audioRef.current.currentTime
     setCurrentTime(t)
-    // Find active segment
-    const seg = recording?.segments?.find(s => t >= s.startTime && t < s.endTime)
+    const seg = recording?.segments ? findActiveSegment(recording.segments, t) : undefined
     setActiveSegment(seg?.id ?? null)
+  }
+
+  const handleLoadedMetadata = () => {
+    const audio = audioRef.current
+    if (!audio) return
+    setDuration(Number.isFinite(audio.duration) ? audio.duration : recording?.duration ?? 0)
+    const requestedTime = Number(searchParams.get('t'))
+    if (Number.isFinite(requestedTime) && requestedTime > 0) {
+      audio.currentTime = requestedTime
+      setCurrentTime(requestedTime)
+    }
+  }
+
+  const runAction = async (nextAction: 'transcribing' | 'summarizing') => {
+    if (!id) return
+    setAction(nextAction)
+    setError('')
+    try {
+      if (nextAction === 'transcribing') {
+        await api.transcribe(id)
+        setRecording(current => current ? { ...current, status: 'pending' } : current)
+      } else {
+        await api.summarize(id)
+        await loadRecording()
+      }
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Action failed')
+    } finally {
+      setAction(null)
+    }
   }
 
   if (loading) {
@@ -67,21 +131,21 @@ export function RecordingDetail() {
 
   if (!recording) {
     return (
-      <div className="p-8 text-center text-muted-foreground">Recording not found</div>
+      <div className="flex flex-col items-center p-8 text-center text-muted-foreground" role="alert">
+        <AlertCircle className="mb-3 h-10 w-10 opacity-40" />
+        <p className="font-medium text-foreground">Recording unavailable</p>
+        <p className="mt-1 text-sm">{error || 'Recording not found'}</p>
+        <Button variant="outline" size="sm" className="mt-4" onClick={() => void loadRecording()}>Retry</Button>
+      </div>
     )
   }
-
-  const speakerMap = new Map<string, number>()
-  recording.segments?.forEach(s => {
-    if (!speakerMap.has(s.speaker)) speakerMap.set(s.speaker, speakerMap.size)
-  })
 
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link to="/">
-          <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" aria-label="Back to recordings" title="Back to recordings"><ArrowLeft className="h-4 w-4" /></Button>
         </Link>
         <div className="flex-1">
           <h1 className="text-xl font-semibold">{recording.title}</h1>
@@ -93,6 +157,13 @@ export function RecordingDetail() {
         <Badge variant={recording.status === 'complete' ? 'success' : recording.status === 'failed' ? 'destructive' : 'warning'}>{recording.status}</Badge>
       </div>
 
+      {error && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Audio Player */}
       <Card>
         <CardContent className="p-5 space-y-4">
@@ -100,8 +171,9 @@ export function RecordingDetail() {
             ref={audioRef}
             src={api.getAudioUrl(recording.id)}
             onTimeUpdate={handleTimeUpdate}
-            onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? recording.duration)}
+            onLoadedMetadata={handleLoadedMetadata}
             onEnded={() => setPlaying(false)}
+            preload="metadata"
           />
           {/* Waveform placeholder */}
           <div ref={waveformRef} className="relative h-20 bg-secondary/50 rounded-lg overflow-hidden cursor-pointer"
@@ -113,35 +185,31 @@ export function RecordingDetail() {
           >
             {/* Fake waveform bars */}
             <div className="absolute inset-0 flex items-center gap-[2px] px-2">
-              {Array.from({ length: 120 }, (_, i) => {
-                const h = 20 + Math.sin(i * 0.3) * 30 + Math.random() * 20
+              {waveformHeights.map((height, i) => {
                 const pct = i / 120
                 const isPlayed = pct <= currentTime / (duration || recording.duration || 1)
                 return (
                   <div
                     key={i}
                     className={`flex-1 rounded-full transition-colors ${isPlayed ? 'bg-primary' : 'bg-muted-foreground/20'}`}
-                    style={{ height: `${h}%` }}
+                    style={{ height: `${height}%` }}
                   />
                 )
               })}
             </div>
             {/* Progress overlay */}
-            <div
-              className="absolute top-0 left-0 h-full bg-primary/5"
-              style={{ width: `${(currentTime / (duration || recording.duration || 1)) * 100}%` }}
-            />
+            <div className="pointer-events-none absolute inset-0 origin-left bg-primary/5" style={{ transform: `scaleX(${currentTime / (duration || recording.duration || 1)})` }} />
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground font-mono">{formatDuration(currentTime)}</span>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => seekTo(Math.max(0, currentTime - 15))}>
+              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => seekTo(Math.max(0, currentTime - 15))} aria-label="Back 15 seconds" title="Back 15 seconds">
                 <SkipBack className="h-4 w-4" />
               </Button>
-              <Button size="icon" className="h-11 w-11 rounded-full" onClick={togglePlay}>
+              <Button size="icon" className="h-11 w-11 rounded-full" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'} title={playing ? 'Pause' : 'Play'}>
                 {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
               </Button>
-              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => seekTo(currentTime + 15)}>
+              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => seekTo(Math.min(duration || recording.duration, currentTime + 15))} aria-label="Forward 15 seconds" title="Forward 15 seconds">
                 <SkipForward className="h-4 w-4" />
               </Button>
             </div>
@@ -163,9 +231,10 @@ export function RecordingDetail() {
             <CardContent className="max-h-[500px] overflow-y-auto space-y-3">
               {recording.segments && recording.segments.length > 0 ? (
                 recording.segments.map(seg => (
-                  <div
+                  <button
+                    type="button"
                     key={seg.id}
-                    className={`flex gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                    className={`transcript-segment flex w-full gap-3 rounded-lg p-3 text-left transition-colors ${
                       activeSegment === seg.id ? 'bg-primary/10 ring-1 ring-primary/20' : 'hover:bg-accent/50'
                     }`}
                     onClick={() => seekTo(seg.startTime)}
@@ -177,14 +246,15 @@ export function RecordingDetail() {
                       <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{formatDuration(seg.startTime)}</p>
                     </div>
                     <p className="text-sm leading-relaxed">{seg.text}</p>
-                  </div>
+                  </button>
                 ))
               ) : recording.transcriptText ? (
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{recording.transcriptText}</p>
               ) : (
                 <div className="text-center py-10 text-muted-foreground">
                   <p className="text-sm">No transcript available</p>
-                  <Button size="sm" className="mt-3" onClick={() => id && api.transcribe(id)}>
+                  <Button size="sm" className="mt-3" onClick={() => void runAction('transcribing')} disabled={action !== null}>
+                    {action === 'transcribing' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Transcribe now
                   </Button>
                 </div>
@@ -207,7 +277,8 @@ export function RecordingDetail() {
               ) : (
                 <div className="text-center py-6 text-muted-foreground">
                   <p className="text-sm">No summary yet</p>
-                  <Button size="sm" variant="outline" className="mt-3" onClick={() => id && api.summarize(id)}>
+                  <Button size="sm" variant="outline" className="mt-3" onClick={() => void runAction('summarizing')} disabled={action !== null}>
+                    {action === 'summarizing' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Generate summary
                   </Button>
                 </div>
@@ -240,34 +311,4 @@ export function RecordingDetail() {
       </div>
     </div>
   )
-}
-
-const mockRecording: Recording = {
-  id: '1',
-  title: 'MBA 560 - Business Analytics Lecture',
-  filename: 'rec_001.wav',
-  filePath: '',
-  duration: 4820,
-  fileSize: 48200000,
-  recordingType: 'class',
-  context: null,
-  recordedAt: new Date().toISOString(),
-  createdAt: new Date().toISOString(),
-  status: 'complete',
-  summary: 'Professor covered regression analysis fundamentals, including simple and multiple linear regression, R-squared interpretation, and practical applications in business decision making. Key emphasis on avoiding overfitting and the importance of cross-validation.',
-  actionItems: [
-    'Complete homework 3 on regression analysis by Friday',
-    'Read Chapter 7 on logistic regression',
-    'Form groups for the final project by next Tuesday',
-    'Review the Kaggle dataset for practice',
-  ],
-  segments: [
-    { id: 's1', speaker: 'Professor', text: 'Alright, let\'s get started. Today we\'re going to dive into regression analysis, which is really the foundation of predictive analytics.', startTime: 0, endTime: 12 },
-    { id: 's2', speaker: 'Professor', text: 'The basic idea is simple — we want to understand the relationship between variables and use that to make predictions.', startTime: 12, endTime: 22 },
-    { id: 's3', speaker: 'Student 1', text: 'Is this different from correlation analysis?', startTime: 22, endTime: 25 },
-    { id: 's4', speaker: 'Professor', text: 'Great question. Correlation tells you that two things move together. Regression tells you by how much, and lets you predict one from the other.', startTime: 25, endTime: 35 },
-    { id: 's5', speaker: 'Professor', text: 'Let me show you with a real example. Say you have advertising spend and revenue data...', startTime: 35, endTime: 45 },
-    { id: 's6', speaker: 'Student 2', text: 'Can we use multiple variables at once?', startTime: 45, endTime: 48 },
-    { id: 's7', speaker: 'Professor', text: 'Absolutely. That\'s multiple linear regression. You can have as many predictors as you want, but be careful of overfitting — which we\'ll discuss next.', startTime: 48, endTime: 60 },
-  ],
 }

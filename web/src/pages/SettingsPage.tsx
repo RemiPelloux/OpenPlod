@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Save, Loader2, FolderOpen } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Save, Loader2, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,10 @@ function Toggle({ checked, onChange, label, description }: { checked: boolean; o
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
       <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
         className={`relative h-6 w-11 rounded-full transition-colors ${checked ? 'bg-primary' : 'bg-secondary'}`}
       >
@@ -33,25 +37,39 @@ export function SettingsPage() {
     transcriptionEngine: 'whisper',
     groqApiKey: '',
     deepgramApiKey: '',
+    groqApiKeyConfigured: false,
+    deepgramApiKeyConfigured: false,
     syncFolderPath: '~/Documents/PlaudSync',
     autoTranscribe: true,
     autoSummarize: false,
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+  const savedTimer = useRef<number | null>(null)
 
   useEffect(() => {
-    api.getSettings().then(setSettings).catch(() => {})
+    api.getSettings().then(setSettings).catch(loadError => {
+      setError(loadError instanceof Error ? loadError.message : 'Could not load settings')
+    })
+    return () => {
+      if (savedTimer.current) window.clearTimeout(savedTimer.current)
+    }
   }, [])
 
   const save = async () => {
     setSaving(true)
+    setError('')
     try {
-      await api.updateSettings(settings)
+      setSettings(await api.updateSettings(settings))
       setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } catch {}
-    setSaving(false)
+      if (savedTimer.current) window.clearTimeout(savedTimer.current)
+      savedTimer.current = window.setTimeout(() => setSaved(false), 2000)
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save settings')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const update = (patch: Partial<Settings>) => setSettings(s => ({ ...s, ...patch }))
@@ -60,7 +78,7 @@ export function SettingsPage() {
     <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+          <h1 className="text-2xl font-semibold">Settings</h1>
           <p className="text-sm text-muted-foreground mt-1">Configure transcription and sync</p>
         </div>
         <Button onClick={save} disabled={saving}>
@@ -69,6 +87,13 @@ export function SettingsPage() {
         </Button>
       </div>
 
+      {error && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Transcription Engine */}
       <Card>
         <CardHeader className="pb-3">
@@ -76,10 +101,11 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {engines.map(engine => (
-            <div
+            <button
+              type="button"
               key={engine.id}
               onClick={() => update({ transcriptionEngine: engine.id })}
-              className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+              className={`flex w-full items-center gap-4 rounded-lg border-2 p-4 text-left transition-colors ${
                 settings.transcriptionEngine === engine.id
                   ? 'border-primary bg-primary/5'
                   : 'border-transparent bg-secondary/50 hover:bg-secondary'
@@ -96,7 +122,7 @@ export function SettingsPage() {
                 <p className="text-sm font-medium">{engine.name}</p>
                 <p className="text-xs text-muted-foreground">{engine.desc}</p>
               </div>
-            </div>
+            </button>
           ))}
         </CardContent>
       </Card>
@@ -113,7 +139,7 @@ export function SettingsPage() {
                 <label className="text-sm font-medium">Groq API Key</label>
                 <Input
                   type="password"
-                  placeholder="gsk_..."
+                  placeholder={settings.groqApiKeyConfigured ? 'Saved key (enter a new key to replace)' : 'gsk_...'}
                   value={settings.groqApiKey || ''}
                   onChange={e => update({ groqApiKey: e.target.value })}
                 />
@@ -124,7 +150,7 @@ export function SettingsPage() {
                 <label className="text-sm font-medium">Deepgram API Key</label>
                 <Input
                   type="password"
-                  placeholder="Enter your Deepgram API key"
+                  placeholder={settings.deepgramApiKeyConfigured ? 'Saved key (enter a new key to replace)' : 'Enter your Deepgram API key'}
                   value={settings.deepgramApiKey || ''}
                   onChange={e => update({ deepgramApiKey: e.target.value })}
                 />
@@ -142,16 +168,10 @@ export function SettingsPage() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Plaud Sync Folder</label>
-            <div className="flex gap-2">
-              <Input
-                value={settings.syncFolderPath}
-                onChange={e => update({ syncFolderPath: e.target.value })}
-                className="flex-1"
-              />
-              <Button variant="outline" size="icon">
-                <FolderOpen className="h-4 w-4" />
-              </Button>
-            </div>
+            <Input
+              value={settings.syncFolderPath}
+              onChange={e => update({ syncFolderPath: e.target.value })}
+            />
             <p className="text-xs text-muted-foreground">Path to your PlaudSync folder on this machine</p>
           </div>
         </CardContent>

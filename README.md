@@ -1,15 +1,13 @@
-# Plaud App
+# OpenPlod
 
 Self-hosted transcription and recording management for [Plaud](https://plaud.ai) devices. No subscription needed — bring your own API keys or use local Whisper.
-
-![Dashboard](screenshots/dashboard.png)
 
 ## Features
 
 - 🎙️ **Auto-sync** — watches your PlaudSync folder for new recordings
 - 📝 **Multi-engine transcription** — Whisper (local/free), Groq (fast), Deepgram (diarization)
-- 🔍 **Full-text search** across all transcripts
-- 🎵 **Audio playback** with visual waveform and segment navigation
+- 🔍 **Indexed full-text search** across all transcripts
+- 🎵 **Range-streamed audio playback** with visual waveform and segment navigation
 - 🏷️ **Speaker diarization** (Deepgram engine)
 - 📊 **Dashboard** with recording stats and status tracking
 - 🌙 **Dark/light mode**
@@ -30,8 +28,8 @@ Self-hosted transcription and recording management for [Plaud](https://plaud.ai)
 ## Quick Start (Docker)
 
 ```bash
-git clone https://github.com/yourusername/plaud-app.git
-cd plaud-app
+git clone https://github.com/RemiPelloux/OpenPlod.git
+cd OpenPlod
 
 # Optional: set API keys in .env
 echo "GROQ_API_KEY=gsk_..." > .env
@@ -41,6 +39,18 @@ docker compose up --build
 ```
 
 Open [http://localhost:3456](http://localhost:3456)
+
+## Connect a Plaud Note Pro
+
+OpenPlod imports audio files from a local folder. The Plaud Note Pro does not expose recordings through standard Bluetooth file transfer, so use the official Plaud app to export or sync recordings into a folder first. Then set that folder under **Settings > Plaud Sync Folder** and press **Sync**.
+
+On macOS, verify that the Note Pro is awake, nearby, and reachable over Bluetooth Low Energy:
+
+```bash
+bun run device:scan
+```
+
+This performs a read-only connection probe. It does not download, modify, or delete recordings.
 
 ## Manual Setup
 
@@ -77,6 +87,14 @@ bun run dev:web
 
 Frontend dev server runs on `:5173` and proxies `/api` to the backend on `:3456`.
 
+Run the quality checks with:
+
+```bash
+bun run typecheck
+bun test
+cd web && bun run lint && bun run build
+```
+
 ## Transcription Engines
 
 | Engine | Speed | Cost | Diarization | Setup |
@@ -92,6 +110,12 @@ The app automatically falls back through the engine chain: Whisper → Groq → 
 - **Backend:** Bun + Hono + Drizzle ORM + SQLite
 - **Frontend:** React + Tailwind CSS + Radix UI
 - **Transcription:** whisper.cpp, Groq API, Deepgram API
+
+## Security
+
+Manual installs bind to `127.0.0.1` by default. Docker binds to all interfaces so its published port works; keep it on a trusted network. Add authentication at a reverse proxy before exposing OpenPlod to the internet because recordings and transcripts are private data.
+
+Provider API keys are stored locally and are never returned by the settings API after saving.
 
 ## License
 

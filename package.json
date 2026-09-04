@@ -6,10 +6,13 @@
     "dev": "bun run src/index.ts",
     "dev:web": "cd web && bun run dev",
     "build": "cd web && bun run build",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "start": "NODE_ENV=production bun run src/index.ts",
     "docker": "docker compose up --build",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "bun run src/db/migrate.ts"
+    "db:migrate": "bun run src/db/migrate.ts",
+    "device:scan": "swift scripts/scan-plaud.swift"
   },
   "dependencies": {
     "hono": "^4.7.0",
@@ -18,6 +21,7 @@
     "@deepgram/sdk": "^3.9.0"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.0",
     "drizzle-kit": "^0.30.0",
     "typescript": "^5.7.0"
   }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Search, Loader2, Mic } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -11,37 +11,55 @@ export function SearchPage() {
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [error, setError] = useState('')
 
-  const handleSearch = async (q: string) => {
-    setQuery(q)
-    if (q.length < 2) { setResults([]); setSearched(false); return }
-    setLoading(true)
-    setSearched(true)
-    try {
-      const r = await api.search(q)
-      setResults(r)
-    } catch {
-      // Mock results
-      setResults(mockResults.filter(r =>
-        r.segments.some(s => s.text.toLowerCase().includes(q.toLowerCase()))
-      ))
+  useEffect(() => {
+    const normalizedQuery = query.trim()
+    if (normalizedQuery.length < 2) {
+      setResults([])
+      setSearched(false)
+      setLoading(false)
+      setError('')
+      return
     }
-    setLoading(false)
-  }
+
+    const controller = new AbortController()
+    const timer = window.setTimeout(async () => {
+      setLoading(true)
+      setSearched(true)
+      setError('')
+      try {
+        setResults(await api.search(normalizedQuery, controller.signal))
+      } catch (searchError) {
+        if (searchError instanceof DOMException && searchError.name === 'AbortError') return
+        setResults([])
+        setError(searchError instanceof Error ? searchError.message : 'Search failed')
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    }, 250)
+
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [query])
 
   const highlight = (text: string, q: string) => {
     if (!q || q.length < 2) return text
     const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
     const parts = text.split(regex)
     return parts.map((part, i) =>
-      regex.test(part) ? <mark key={i} className="bg-primary/30 text-foreground rounded px-0.5">{part}</mark> : part
+      part.toLocaleLowerCase() === q.toLocaleLowerCase()
+        ? <mark key={i} className="bg-primary/30 text-foreground rounded px-0.5">{part}</mark>
+        : part
     )
   }
 
   return (
     <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
+        <h1 className="text-2xl font-semibold">Search</h1>
         <p className="text-sm text-muted-foreground mt-1">Search across all your transcripts</p>
       </div>
 
@@ -51,7 +69,7 @@ export function SearchPage() {
           placeholder="Search transcripts..."
           className="pl-12 h-12 text-base"
           value={query}
-          onChange={e => handleSearch(e.target.value)}
+          onChange={e => setQuery(e.target.value)}
           autoFocus
         />
       </div>
@@ -59,6 +77,12 @@ export function SearchPage() {
       {loading ? (
         <div className="flex justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : error ? (
+        <div className="text-center py-20 text-muted-foreground" role="alert">
+          <Search className="h-12 w-12 mx-auto mb-3 opacity-30" />
+          <p className="text-lg font-medium text-foreground">Search unavailable</p>
+          <p className="text-sm">{error}</p>
         </div>
       ) : results.length > 0 ? (
         <div className="space-y-4">
@@ -109,23 +133,3 @@ export function SearchPage() {
     </div>
   )
 }
-
-const mockResults: SearchResult[] = [
-  {
-    recordingId: '1',
-    recordingTitle: 'MBA 560 - Business Analytics Lecture',
-    recordedAt: new Date().toISOString(),
-    segments: [
-      { id: 's1', speaker: 'Professor', text: 'Today we\'re going to dive into regression analysis, which is really the foundation of predictive analytics.', startTime: 0, endTime: 12 },
-      { id: 's4', speaker: 'Professor', text: 'Correlation tells you that two things move together. Regression tells you by how much.', startTime: 25, endTime: 35 },
-    ],
-  },
-  {
-    recordingId: '5',
-    recordingTitle: 'Career Strategy Workshop',
-    recordedAt: new Date(Date.now() - 345600000).toISOString(),
-    segments: [
-      { id: 's10', speaker: 'Coach', text: 'The key to a successful career strategy is understanding your regression to the mean — what are your baseline strengths?', startTime: 120, endTime: 132 },
-    ],
-  },
-]

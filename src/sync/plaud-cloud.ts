@@ -52,7 +52,8 @@ export class PlaudCloudSync {
     // Lazy import playwright — it's optional
     let chromium: any;
     try {
-      ({ chromium } = await import('playwright'));
+      const moduleName = 'playwright';
+      ({ chromium } = await import(moduleName));
     } catch {
       result.errors.push('Playwright not installed. Run: bun add playwright');
       return result;

@@ -7,7 +7,7 @@
 import { watch, existsSync, readdirSync, statSync } from 'fs';
 import { join, basename, extname } from 'path';
 import { db } from '../db/client';
-import { recordings } from '../db/schema';
+import { recordings, userSettings } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { jobQueue } from '../jobs/queue';
 
@@ -25,6 +25,8 @@ export class FolderWatcher {
   private watcher: ReturnType<typeof watch> | null = null;
   private isWatching = false;
   private processedFiles = new Set<string>();
+  private pendingFiles = new Set<string>();
+  private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(syncPath?: string) {
     this.syncPath = syncPath || process.env.PLAUD_SYNC_PATH || null;
@@ -51,7 +53,15 @@ export class FolderWatcher {
       if (!filename) return;
       const fullPath = join(this.syncPath!, filename);
       if (existsSync(fullPath) && this.isAudio(filename)) {
-        setTimeout(() => this.processFile(fullPath), 2000);
+        const existingTimer = this.debounceTimers.get(fullPath);
+        if (existingTimer) clearTimeout(existingTimer);
+        const timer = setTimeout(() => {
+          this.debounceTimers.delete(fullPath);
+          void this.processFile(fullPath).catch(error => {
+            console.error(`[FolderWatcher] Failed to process ${filename}:`, error);
+          });
+        }, 1000);
+        this.debounceTimers.set(fullPath, timer);
       }
     });
 
@@ -62,6 +72,8 @@ export class FolderWatcher {
 
   stopWatching() {
     this.watcher?.close();
+    for (const timer of this.debounceTimers.values()) clearTimeout(timer);
+    this.debounceTimers.clear();
     this.watcher = null;
     this.isWatching = false;
   }
@@ -92,48 +104,57 @@ export class FolderWatcher {
   }
 
   /** Process a single file — insert into DB if new, queue for transcription */
-  private async processFile(filePath: string) {
-    if (this.processedFiles.has(filePath)) return;
+  private async processFile(filePath: string, skipExistingCheck = false, autoTranscribe?: boolean): Promise<boolean> {
+    if (this.processedFiles.has(filePath) || this.pendingFiles.has(filePath)) return false;
+    this.pendingFiles.add(filePath);
 
-    const filename = basename(filePath);
+    try {
+      const filename = basename(filePath);
 
-    // Check DB for existing
-    const existing = await db
-      .select()
-      .from(recordings)
-      .where(eq(recordings.originalFilename, filename))
-      .limit(1);
+      if (!skipExistingCheck) {
+        const existing = await db
+          .select({ id: recordings.id })
+          .from(recordings)
+          .where(eq(recordings.filePath, filePath))
+          .limit(1);
 
-    if (existing.length > 0) {
+        if (existing.length > 0) {
+          this.processedFiles.add(filePath);
+          return false;
+        }
+      }
+
+      console.log(`[FolderWatcher] New recording: ${filename}`);
+
+      const metadata = this.parseFilename(filename);
+      const stats = statSync(filePath);
+      const recordedAt = metadata.recordedAt || stats.mtime;
+
+      const [recording] = await db.insert(recordings).values({
+        filePath,
+        originalFilename: filename,
+        fileSizeBytes: stats.size,
+        recordingType: metadata.type || 'other',
+        context: metadata.context || null,
+        status: 'pending',
+        recordedAt: recordedAt.toISOString(),
+      }).returning();
+
       this.processedFiles.add(filePath);
-      return;
+
+      const shouldTranscribe = autoTranscribe ?? await this.isAutoTranscribeEnabled();
+      if (shouldTranscribe) {
+        await jobQueue.add('process-recording', {
+          recordingId: recording.id,
+          filePath,
+          recordingType: metadata.type,
+        });
+        console.log(`[FolderWatcher] Queued recording ${recording.id}`);
+      }
+      return true;
+    } finally {
+      this.pendingFiles.delete(filePath);
     }
-
-    console.log(`[FolderWatcher] New recording: ${filename}`);
-
-    const metadata = this.parseFilename(filename);
-    const stats = statSync(filePath);
-    const recordedAt = metadata.recordedAt || stats.mtime;
-
-    const [recording] = await db.insert(recordings).values({
-      filePath,
-      originalFilename: filename,
-      fileSizeBytes: stats.size,
-      recordingType: metadata.type || 'other',
-      context: metadata.context || null,
-      status: 'pending',
-      recordedAt: recordedAt.toISOString(),
-    }).returning();
-
-    this.processedFiles.add(filePath);
-
-    await jobQueue.add('process-recording', {
-      recordingId: recording.id,
-      filePath,
-      recordingType: metadata.type,
-    });
-
-    console.log(`[FolderWatcher] Queued recording ${recording.id}`);
   }
 
   /** Parse date/type/context from filename */
@@ -168,16 +189,21 @@ export class FolderWatcher {
       return result;
     }
 
+    const existingRows = await db.select({ filePath: recordings.filePath }).from(recordings);
+    const existingPaths = new Set(existingRows.map(recording => recording.filePath));
+    const autoTranscribe = await this.isAutoTranscribeEnabled();
+
     for (const rec of this.listRecordings()) {
       try {
-        const existing = await db.select().from(recordings).where(eq(recordings.originalFilename, rec.filename)).limit(1);
-        if (existing.length > 0) {
+        if (existingPaths.has(rec.path)) {
           result.skipped++;
           this.processedFiles.add(rec.path);
           continue;
         }
-        await this.processFile(rec.path);
-        result.added++;
+        if (await this.processFile(rec.path, true, autoTranscribe)) {
+          result.added++;
+          existingPaths.add(rec.path);
+        }
       } catch (err) {
         result.errors.push(`${rec.filename}: ${err}`);
       }
@@ -193,5 +219,14 @@ export class FolderWatcher {
       syncPath: this.syncPath,
       recordingCount: this.isConfigured() ? this.listRecordings().length : 0,
     };
+  }
+
+  private async isAutoTranscribeEnabled(): Promise<boolean> {
+    const [setting] = await db
+      .select({ value: userSettings.value })
+      .from(userSettings)
+      .where(eq(userSettings.key, 'autoTranscribe'))
+      .limit(1);
+    return setting?.value !== 'false';
   }
 }

@@ -7,79 +7,22 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { serveStatic } from 'hono/bun';
-import { sqlite } from './db/client';
+import { initializeDatabase } from './db/setup';
 import recordingsApi from './api/recordings';
 import { FolderWatcher } from './sync/folder-watcher';
 import { jobQueue } from './jobs/queue';
-import { TranscriptionRouter } from './transcription/router';
+import { TranscriptionRouter, type EngineName } from './transcription/router';
 import { db } from './db/client';
-import { recordings, transcripts } from './db/schema';
-import { eq, like, or } from 'drizzle-orm';
+import { recordings, transcripts, userSettings } from './db/schema';
+import { eq } from 'drizzle-orm';
+import { searchTranscripts } from './search/transcripts';
+import { homedir } from 'os';
 
 // ============================================
 // Create tables on startup
 // ============================================
 
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS recordings (
-    id TEXT PRIMARY KEY,
-    file_path TEXT NOT NULL,
-    original_filename TEXT,
-    duration_seconds INTEGER,
-    file_size_bytes INTEGER,
-    recording_type TEXT NOT NULL,
-    context TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',
-    recorded_at TEXT,
-    uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
-    processed_at TEXT,
-    error_message TEXT,
-    retry_count INTEGER NOT NULL DEFAULT 0
-  );
-  CREATE TABLE IF NOT EXISTS transcripts (
-    id TEXT PRIMARY KEY,
-    recording_id TEXT NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,
-    full_text TEXT NOT NULL,
-    segments TEXT,
-    word_count INTEGER,
-    speaker_count INTEGER,
-    confidence_score REAL,
-    summary TEXT,
-    extracted_tasks TEXT,
-    analyzed_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS speaker_profiles (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    category TEXT NOT NULL DEFAULT 'other',
-    sample_count INTEGER NOT NULL DEFAULT 0,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    notes TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS speaker_mappings (
-    id TEXT PRIMARY KEY,
-    transcript_id TEXT NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
-    speaker_id INTEGER NOT NULL,
-    profile_id TEXT REFERENCES speaker_profiles(id) ON DELETE SET NULL,
-    confidence REAL,
-    manually_assigned INTEGER NOT NULL DEFAULT 0
-  );
-  CREATE TABLE IF NOT EXISTS analyses (
-    id TEXT PRIMARY KEY,
-    recording_id TEXT NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,
-    summary TEXT,
-    extracted_tasks TEXT,
-    analyzed_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS user_settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
+initializeDatabase();
 
 console.log('[DB] Tables ready');
 
@@ -101,7 +44,16 @@ jobQueue.register('process-recording', async (data: any) => {
 
   await db.update(recordings).set({ status: 'transcribing' }).where(eq(recordings.id, recordingId));
 
-  const result = await transcriptionRouter.transcribeFile(filePath);
+  const savedSettings = await db.select().from(userSettings);
+  const settings = Object.fromEntries(savedSettings.map(setting => [setting.key, setting.value]));
+  const primary = ['whisper', 'groq', 'deepgram'].includes(settings.transcriptionEngine)
+    ? settings.transcriptionEngine as EngineName
+    : 'whisper';
+  const router = new TranscriptionRouter(
+    { primary, fallback: ['whisper', 'groq', 'deepgram'].filter(name => name !== primary) as EngineName[] },
+    { groqApiKey: settings.groqApiKey, deepgramApiKey: settings.deepgramApiKey },
+  );
+  const result = await router.transcribeFile(filePath);
 
   if (result.success) {
     // Store transcript
@@ -112,7 +64,30 @@ jobQueue.register('process-recording', async (data: any) => {
       wordCount: result.wordCount,
       speakerCount: result.speakerCount,
       confidenceScore: result.confidence,
+    }).onConflictDoUpdate({
+      target: transcripts.recordingId,
+      set: {
+        fullText: result.fullText,
+        segments: result.segments as any,
+        wordCount: result.wordCount,
+        speakerCount: result.speakerCount,
+        confidenceScore: result.confidence,
+        summary: null,
+        extractedTasks: null,
+        analyzedAt: null,
+        createdAt: new Date().toISOString(),
+      },
     });
+
+    if (settings.autoSummarize === 'true') {
+      await db.update(recordings).set({ status: 'summarizing' }).where(eq(recordings.id, recordingId));
+      try {
+        const { recordingAnalyzer } = await import('./analysis/analyzer');
+        await recordingAnalyzer.analyze(recordingId, true);
+      } catch (error) {
+        console.error(`[Job] Auto-summary failed for ${recordingId}:`, error);
+      }
+    }
 
     await db.update(recordings).set({
       status: 'complete',
@@ -136,7 +111,17 @@ jobQueue.register('process-recording', async (data: any) => {
 
 const app = new Hono();
 
-app.use('*', cors());
+app.use('*', cors({
+  origin: origin => {
+    if (!origin) return '';
+    try {
+      const url = new URL(origin);
+      return ['localhost', '127.0.0.1', '::1'].includes(url.hostname) ? origin : '';
+    } catch {
+      return '';
+    }
+  },
+}));
 app.use('*', logger());
 
 // Health/info
@@ -153,15 +138,33 @@ app.route('/api/recordings', recordingsApi);
 
 // Settings
 app.get('/api/settings', async (c) => {
-  const { userSettings } = await import('./db/schema');
   const settings = await db.select().from(userSettings);
-  return c.json({ success: true, data: Object.fromEntries(settings.map(s => [s.key, s.value])) });
+  const values = Object.fromEntries(settings.map(setting => [setting.key, setting.value]));
+  return c.json({
+    success: true,
+    data: {
+      transcriptionEngine: values.transcriptionEngine,
+      syncFolderPath: values.syncFolderPath || '~/Documents/PlaudSync',
+      autoTranscribe: values.autoTranscribe ?? 'true',
+      autoSummarize: values.autoSummarize ?? 'false',
+      groqApiKeyConfigured: Boolean(values.groqApiKey),
+      deepgramApiKeyConfigured: Boolean(values.deepgramApiKey),
+    },
+  });
 });
 
 app.put('/api/settings/:key', async (c) => {
   const key = c.req.param('key');
+  const allowedKeys = new Set([
+    'transcriptionEngine',
+    'groqApiKey',
+    'deepgramApiKey',
+    'syncFolderPath',
+    'autoTranscribe',
+    'autoSummarize',
+  ]);
+  if (!allowedKeys.has(key)) return c.json({ success: false, error: 'Unknown setting' }, 400);
   const { value } = await c.req.json();
-  const { userSettings } = await import('./db/schema');
   await db.insert(userSettings).values({ key, value: String(value) })
     .onConflictDoUpdate({ target: userSettings.key, set: { value: String(value), updatedAt: new Date().toISOString() } });
   return c.json({ success: true });
@@ -179,46 +182,7 @@ app.get('/api/search', async (c) => {
   if (q.length < 2) return c.json({ success: true, data: [] });
 
   try {
-    const results = await db
-      .select()
-      .from(transcripts)
-      .where(like(transcripts.fullText, `%${q}%`));
-
-    const searchResults = [];
-    for (const t of results) {
-      const [rec] = await db.select().from(recordings).where(eq(recordings.id, t.recordingId)).limit(1);
-      if (!rec) continue;
-
-      const segments = typeof t.segments === 'string' ? JSON.parse(t.segments) : (t.segments || []);
-      const matchingSegments = segments.filter((s: any) =>
-        (s.text || '').toLowerCase().includes(q.toLowerCase())
-      ).slice(0, 5).map((s: any, i: number) => ({
-        id: `s${i}`,
-        speaker: s.speaker !== undefined ? `Speaker ${s.speaker}` : 'Speaker',
-        text: s.text || '',
-        startTime: s.start || 0,
-        endTime: s.end || 0,
-      }));
-
-      if (matchingSegments.length === 0 && t.fullText.toLowerCase().includes(q.toLowerCase())) {
-        matchingSegments.push({
-          id: 's0',
-          speaker: 'Speaker',
-          text: t.fullText.substring(0, 200),
-          startTime: 0,
-          endTime: 0,
-        });
-      }
-
-      searchResults.push({
-        recordingId: rec.id,
-        recordingTitle: rec.originalFilename?.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ') || 'Untitled',
-        recordedAt: rec.recordedAt || rec.uploadedAt,
-        segments: matchingSegments,
-      });
-    }
-
-    return c.json({ success: true, data: searchResults });
+    return c.json({ success: true, data: searchTranscripts(q) });
   } catch (error) {
     return c.json({ success: false, error: String(error) }, 500);
   }
@@ -232,18 +196,28 @@ app.get('/*', serveStatic({ path: './web/dist/index.html' }));
 // Start folder watcher + server
 // ============================================
 
-const watcher = new FolderWatcher();
-if (watcher.isConfigured()) {
+async function startFolderSync() {
+  const savedSettings = await db.select().from(userSettings);
+  const settings = Object.fromEntries(savedSettings.map(setting => [setting.key, setting.value]));
+  const configuredPath = settings.syncFolderPath?.startsWith('~/')
+    ? `${homedir()}/${settings.syncFolderPath.slice(2)}`
+    : settings.syncFolderPath;
+  const watcher = new FolderWatcher(configuredPath);
+  if (!watcher.isConfigured()) return;
+
   watcher.startWatching();
-  watcher.syncAll().then(r => {
-    console.log(`[Startup] Folder sync: ${r.added} added, ${r.skipped} skipped`);
-  });
+  const result = await watcher.syncAll();
+  console.log(`[Startup] Folder sync: ${result.added} added, ${result.skipped} skipped`);
 }
 
+void startFolderSync().catch(error => console.error('[Startup] Folder sync failed:', error));
+
 const port = parseInt(process.env.PORT || '3456', 10);
-console.log(`[PlaudApp] Starting on http://localhost:${port}`);
+const hostname = process.env.HOST || '127.0.0.1';
+console.log(`[PlaudApp] Starting on http://${hostname}:${port}`);
 
 export default {
   port,
+  hostname,
   fetch: app.fetch,
 };

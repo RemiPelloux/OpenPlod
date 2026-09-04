@@ -17,8 +17,8 @@ export class GroqWhisperEngine implements TranscriptionEngine {
   readonly name = 'groq';
   private apiKey: string | undefined;
 
-  constructor() {
-    this.apiKey = process.env.GROQ_API_KEY;
+  constructor(apiKey?: string) {
+    this.apiKey = apiKey || process.env.GROQ_API_KEY;
   }
 
   isAvailable(): boolean {
@@ -43,7 +43,7 @@ export class GroqWhisperEngine implements TranscriptionEngine {
 
       // Build multipart form data
       const formData = new FormData();
-      formData.append('file', new Blob([buffer], { type: mimetype }), fname);
+      formData.append('file', new Blob([new Uint8Array(buffer)], { type: mimetype }), fname);
       formData.append('model', model);
       formData.append('response_format', 'verbose_json');
       formData.append('timestamp_granularities[]', 'segment');

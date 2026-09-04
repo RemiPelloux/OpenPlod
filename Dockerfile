@@ -30,6 +30,7 @@ COPY --from=build-web /app/web/dist ./web/dist
 RUN mkdir -p /app/data /plaud
 
 ENV PORT=3456
+ENV HOST=0.0.0.0
 ENV DATABASE_URL=/app/data/plaud.db
 ENV PLAUD_SYNC_PATH=/plaud
 

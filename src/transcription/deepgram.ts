@@ -5,29 +5,28 @@
 import { readFileSync } from 'fs';
 import type { TranscriptionEngine, TranscriptionResult, TranscriptionOptions, TranscriptSegment } from './types.js';
 
-let _client: any = null;
-let _initAttempted = false;
-
-function getClient(): any {
-  if (_initAttempted) return _client;
-  _initAttempted = true;
-  const apiKey = process.env.DEEPGRAM_API_KEY;
-  if (!apiKey) return null;
-  try {
-    // Dynamic require to avoid top-level import failure
-    const { createClient } = require('@deepgram/sdk');
-    _client = createClient(apiKey);
-  } catch (e) {
-    console.log('[Deepgram] SDK not available:', (e as Error).message);
-  }
-  return _client;
-}
-
 export class DeepgramEngine implements TranscriptionEngine {
   readonly name = 'deepgram';
+  private client: any = null;
+  private initAttempted = false;
+
+  constructor(private apiKey = process.env.DEEPGRAM_API_KEY) {}
+
+  private getClient(): any {
+    if (this.initAttempted) return this.client;
+    this.initAttempted = true;
+    if (!this.apiKey) return null;
+    try {
+      const { createClient } = require('@deepgram/sdk');
+      this.client = createClient(this.apiKey);
+    } catch (error) {
+      console.log('[Deepgram] SDK not available:', (error as Error).message);
+    }
+    return this.client;
+  }
 
   isAvailable(): boolean {
-    return getClient() !== null;
+    return this.getClient() !== null;
   }
 
   async transcribeFile(filePath: string, options?: TranscriptionOptions): Promise<TranscriptionResult> {
@@ -36,7 +35,7 @@ export class DeepgramEngine implements TranscriptionEngine {
   }
 
   async transcribeBuffer(buffer: Buffer, mimetype: string, options?: TranscriptionOptions): Promise<TranscriptionResult> {
-    const client = getClient();
+    const client = this.getClient();
     if (!client) return this.fail('DEEPGRAM_API_KEY not set or SDK unavailable');
 
     try {
@@ -60,7 +59,7 @@ export class DeepgramEngine implements TranscriptionEngine {
   }
 
   async transcribeUrl(audioUrl: string, options?: TranscriptionOptions): Promise<TranscriptionResult> {
-    const client = getClient();
+    const client = this.getClient();
     if (!client) return this.fail('DEEPGRAM_API_KEY not set or SDK unavailable');
 
     try {
