@@ -42,7 +42,7 @@ export function Layout() {
       <aside className="hidden md:flex w-[220px] flex-col border-r bg-card">
         <div className="flex items-center gap-2 px-6 py-5 border-b">
           <Mic className="h-5 w-5 text-primary" />
-          <span className="font-semibold text-lg">Plaud</span>
+          <span className="font-semibold text-lg">OpenPlod</span>
         </div>
         <nav className="flex-1 p-3 space-y-1" aria-label="Main navigation">
           {nav.map(({ to, icon: Icon, label }) => (
@@ -79,7 +79,7 @@ export function Layout() {
         <header className="md:hidden flex items-center justify-between border-b px-4 py-3">
           <div className="flex items-center gap-2">
             <Mic className="h-5 w-5 text-primary" />
-            <span className="font-semibold">Plaud</span>
+            <span className="font-semibold">OpenPlod</span>
           </div>
           <div className="flex items-center gap-1">
             {nav.map(({ to, icon: Icon, label }) => (
