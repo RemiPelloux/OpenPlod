@@ -1,0 +1,18 @@
+.desktop-plaud .device-connection { margin-bottom: 0; }
+.desktop-probe-detail { margin: 18px 0; color: var(--muted-foreground); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.desktop-device-states { margin: 28px 0; }
+.desktop-device-states > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 17px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.desktop-device-states dt { color: var(--muted-foreground); }
+.desktop-device-states dd { margin: 0; font-weight: 500; }
+.desktop-device-warning { color: var(--primary); }
+.desktop-device-access { border-left: 3px solid var(--primary); padding: 0 0 0 18px; margin: 32px 0; }
+.desktop-device-access h2, .desktop-vault-link h2 { font-size: 16px; font-weight: 600; margin: 0 0 8px; }
+.desktop-device-access p, .desktop-vault-link p { max-width: 64ch; color: var(--muted-foreground); line-height: 1.6; font-size: 14px; margin: 0; }
+.desktop-vault-link { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; border-top: 1px solid var(--border); padding-top: 28px; }
+.desktop-vault-link > svg { color: var(--pine); width: 24px; height: 24px; }
+.desktop-vault-link > div { flex: 1; min-width: 160px; }
+.desktop-session { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.desktop-session > div { flex: 1; min-width: 180px; overflow-wrap: anywhere; }
+.desktop-session strong, .desktop-session span { display: block; font-size: 14px; }
+.desktop-session span { margin-top: 4px; color: var(--muted-foreground); }
+.desktop-session > svg { width: 20px; height: 20px; color: var(--pine); }

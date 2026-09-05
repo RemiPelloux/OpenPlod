@@ -3,8 +3,10 @@
 <plist version="1.0">
 <dict>
   <key>NSBluetoothAlwaysUsageDescription</key>
-  <string>OpenPlod uses Bluetooth to confirm that your Plaud recorder is nearby. Audio is imported only from your configured Plaud export folder.</string>
+  <string>OpenPlod uses Bluetooth to detect your Plaud recorder and check its connection.</string>
   <key>NSBluetoothPeripheralUsageDescription</key>
   <string>OpenPlod uses Bluetooth to confirm that your Plaud recorder is nearby.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>OpenPlod records audio from your microphone and keeps it in your local recording vault.</string>
 </dict>
 </plist>

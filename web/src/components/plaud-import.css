@@ -1,0 +1,65 @@
+.plaud-import-trigger { gap: 8px; }
+.plaud-import-trigger svg, .plaud-import-dialog button svg { width: 18px; height: 18px; flex-shrink: 0; }
+.plaud-import-overlay { position: fixed; inset: 0; z-index: 80; background: rgb(0 0 0 / 48%); }
+.plaud-import-dialog { position: fixed; z-index: 81; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(640px, calc(100% - 32px)); max-height: min(760px, calc(100dvh - 48px)); display: flex; flex-direction: column; background: var(--card); color: var(--foreground); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 24px 80px rgb(0 0 0 / 24%); overflow: hidden; outline: none; transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
+@starting-style { .plaud-import-dialog:not([data-keyboard="true"]) { opacity: 0; transform: translate(-50%, -48%) scale(.98); } }
+.plaud-import-dialog[data-keyboard="true"] { transition: none; }
+.plaud-import-heading { display: flex; justify-content: space-between; align-items: flex-start; padding: 24px; border-bottom: 1px solid var(--border); gap: 16px; }
+.plaud-import-heading h2 { font-size: 24px; line-height: 1.25; margin: 0 0 6px; }
+.plaud-import-heading p { margin: 0; color: var(--muted-foreground); font-size: 13px; }
+.plaud-import-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 20px 24px; }
+.plaud-import-device { display: flex; align-items: center; gap: 12px; padding-bottom: 20px; }
+.plaud-import-device-icon { width: 44px; height: 52px; background: var(--secondary); border: 1px solid var(--border); border-radius: 6px; display: grid; place-items: center; color: var(--pine); flex-shrink: 0; }
+.plaud-import-device > div { flex: 1; min-width: 0; }
+.plaud-import-device strong, .plaud-import-device span:not(.plaud-import-device-icon) { display: block; }
+.plaud-import-device strong { font-size: 15px; }
+.plaud-import-device div span { font-size: 12px; color: var(--muted-foreground); margin-top: 4px; }
+.plaud-import-dialog button { gap: 7px; }
+.plaud-import-empty { min-height: 216px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 28px 16px; }
+.plaud-import-empty > svg { width: 28px; height: 28px; color: var(--muted-foreground); margin-bottom: 16px; }
+.plaud-import-empty h3 { font-size: 18px; margin: 0 0 8px; }
+.plaud-import-empty p, .plaud-import-empty > span { max-width: 310px; font-size: 13px; line-height: 1.6; margin: 0; color: var(--muted-foreground); }
+.plaud-import-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0 16px; }
+.plaud-import-tabs { display: flex; gap: 4px; background: var(--secondary); padding: 3px; border-radius: 6px; }
+.plaud-import-tabs button { padding: 7px 12px; min-height: 36px; font-size: 13px; border-radius: 4px; color: var(--muted-foreground); cursor: pointer; }
+.plaud-import-tabs button[aria-pressed="true"] { background: var(--card); color: var(--foreground); box-shadow: 0 1px 3px rgb(0 0 0 / 8%); }
+.plaud-import-toolbar select { max-width: 140px; font-size: 12px; color: var(--foreground); background: var(--card); border: 1px solid var(--border); border-radius: 4px; min-height: 36px; padding: 6px; }
+.plaud-import-select-all { display: flex; align-items: center; gap: 12px; font-size: 12px; padding: 10px 0 14px; color: var(--muted-foreground); }
+.plaud-import-select-all span { margin-left: auto; }
+.plaud-import-dialog input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--primary); }
+.plaud-import-row { display: flex; align-items: center; gap: 8px; min-height: 72px; border-top: 1px solid var(--border); }
+.plaud-import-row label { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 14px 0; }
+.plaud-import-row label > svg { width: 20px; flex-shrink: 0; color: var(--muted-foreground); }
+.plaud-import-row label span { min-width: 0; }
+.plaud-import-row strong { display: block; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.plaud-import-row small { display: block; font-size: 12px; color: var(--muted-foreground); margin-top: 4px; }
+.plaud-import-error, .plaud-import-notice { padding: 12px; margin: 0 0 16px; border-left: 3px solid currentColor; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.plaud-import-error { color: var(--destructive); background: var(--background); }
+.plaud-import-notice { display: flex; gap: 8px; align-items: flex-start; color: var(--positive); background: var(--background); }
+.plaud-import-notice svg { width: 18px; height: 18px; flex-shrink: 0; }
+.plaud-import-footer { border-top: 1px solid var(--border); padding: 18px 24px; display: flex; gap: 12px; justify-content: space-between; align-items: center; background: var(--background); }
+.plaud-import-retention { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-foreground); min-width: 0; }
+.plaud-import-retention svg { color: var(--positive); width: 17px; height: 17px; flex-shrink: 0; }
+.plaud-import-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; flex: 1; min-width: 0; font-size: 13px; }
+.plaud-import-progress svg { width: 18px; height: 18px; }
+.plaud-import-progress small { display: block; color: var(--muted-foreground); font-size: 11px; }
+.plaud-import-progress progress { flex-basis: 100%; height: 4px; accent-color: var(--primary); }
+.capture-import-option { margin-top: 24px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.capture-import-option > span { color: var(--muted-foreground); font-size: 12px; }
+@media (max-width: 600px) {
+  .plaud-import-dialog { width: calc(100% - 16px); max-height: calc(100dvh - 24px); }
+  .plaud-import-heading { padding: 20px 16px; }
+  .plaud-import-body { padding: 16px; }
+  .plaud-import-footer { padding: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .plaud-import-row label { gap: 8px; }
+  .plaud-import-row label > svg { display: none; }
+  .plaud-import-tabs button { padding: 7px 9px; }
+  .plaud-import-toolbar select { max-width: 120px; }
+  .plaud-import-empty { min-height: 180px; }
+  .plaud-import-trigger { padding-inline: 12px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plaud-import-dialog { transition: opacity 120ms var(--ease-out); }
+  @starting-style { .plaud-import-dialog:not([data-keyboard="true"]) { transform: translate(-50%, -50%); } }
+  .plaud-import-dialog .animate-spin { animation: none; }
+}

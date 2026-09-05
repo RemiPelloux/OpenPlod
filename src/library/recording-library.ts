@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { copyFile, rename, stat, unlink } from 'node:fs/promises';
+import { copyFile, open, rename, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { db } from '../db/client';
 import { recordings, transcriptVersions, transcripts } from '../db/schema';
@@ -9,10 +9,12 @@ import { and, eq, or } from 'drizzle-orm';
 export const AUDIO_EXTENSIONS = new Set(['.mp3', '.m4a', '.wav', '.ogg', '.webm', '.aac', '.flac']);
 export const TRASH_RETENTION_DAYS = 30;
 
+export class RecordingImportConflict extends Error {}
+
 export type RecordingProvenance = {
   sourceProvider: 'plaud' | 'opennotes' | 'upload';
   sourceRecordingId?: string | null;
-  sourceTransport: 'export' | 'folder' | 'mobile' | 'upload';
+  sourceTransport: 'export' | 'folder' | 'mobile' | 'upload' | 'ble';
   recordedAt?: string | null;
 };
 
@@ -42,11 +44,13 @@ export async function importRecordingFile(params: {
   sourcePath: string;
   provenance: RecordingProvenance;
   originalFilename?: string;
+  expectedFingerprint?: string;
   metadata?: {
     context?: string | null;
     notes?: string | null;
     recordingType?: string;
     tags?: string[];
+    durationMs?: number;
   };
 }): Promise<{ recording: ImportedRecording; added: boolean }> {
   const sourcePath = resolve(params.sourcePath);
@@ -55,12 +59,21 @@ export async function importRecordingFile(params: {
   }
 
   const fingerprint = await fingerprintFile(sourcePath);
+  if (params.expectedFingerprint && params.expectedFingerprint !== fingerprint) {
+    throw new RecordingImportConflict('Audio fingerprint mismatch. Keep the local recording and retry.');
+  }
   const metadata = readPlaudMetadata(sourcePath);
   const sourceRecordingId = params.provenance.sourceRecordingId ?? metadata.id ?? null;
   const duplicateConditions = [eq(recordings.fingerprint, fingerprint)];
-  if (sourceRecordingId) duplicateConditions.push(eq(recordings.sourceRecordingId, sourceRecordingId));
+  if (sourceRecordingId) duplicateConditions.push(and(
+    eq(recordings.sourceRecordingId, sourceRecordingId),
+    eq(recordings.sourceProvider, params.provenance.sourceProvider),
+  )!);
   const [existing] = await db.select().from(recordings).where(or(...duplicateConditions)).limit(1);
   if (existing) {
+    if (params.expectedFingerprint && (existing.fingerprint !== fingerprint || !existsSync(existing.filePath))) {
+      throw new RecordingImportConflict('This source ID already exists with different or missing audio. Local audio retained.');
+    }
     return {
       added: false,
       recording: {
@@ -79,6 +92,8 @@ export async function importRecordingFile(params: {
   mkdirSync(vaultDir, { recursive: true });
   const destination = join(vaultDir, `${id}${extension}`);
   await copyFile(sourcePath, destination);
+  const durableFile = await open(destination, 'r+');
+  try { await durableFile.sync(); } finally { await durableFile.close(); }
   const fileStats = await stat(destination);
   const originalFilename = params.originalFilename ?? basename(sourcePath);
   const recordedAt = params.provenance.recordedAt ?? metadata.startTime ?? fileStats.mtime.toISOString();
@@ -89,6 +104,7 @@ export async function importRecordingFile(params: {
       filePath: destination,
       originalFilename,
       fileSizeBytes: fileStats.size,
+      durationSeconds: params.metadata?.durationMs == null ? null : Math.round(params.metadata.durationMs / 1000),
       recordingType: params.metadata?.recordingType ?? inferRecordingType(originalFilename),
       context: params.metadata?.context ?? null,
       status: 'pending',
@@ -208,20 +224,7 @@ export async function purgeExpiredTrash(now = new Date()): Promise<number> {
   return purged;
 }
 
-export async function updateTranscript(params: {
-  recordingId: string;
-  fullText: string;
-  segments?: unknown;
-}): Promise<void> {
-  const [transcript] = await db.select().from(transcripts).where(eq(transcripts.recordingId, params.recordingId)).limit(1);
-  if (!transcript) throw new Error('Transcript not found.');
-  await saveTranscriptVersion({ ...params, origin: 'edited' });
-  await db.update(transcripts).set({
-    fullText: params.fullText,
-    segments: params.segments ?? transcript.segments,
-    wordCount: params.fullText.trim() ? params.fullText.trim().split(/\s+/).length : 0,
-  }).where(eq(transcripts.id, transcript.id));
-}
+export { updateTranscript } from './transcript-history';
 
 function readPlaudMetadata(sourcePath: string): { id?: string; startTime?: string } {
   const metadataPath = join(dirname(sourcePath), 'metadata.json');

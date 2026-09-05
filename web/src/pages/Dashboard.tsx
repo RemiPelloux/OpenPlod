@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { PlaudImportDialog } from '@/components/PlaudImportDialog'
 import { Link } from 'react-router-dom'
 import { Mic, AlertCircle, Search, LayoutGrid, List, Loader2, RefreshCw, Bluetooth, Download, Trash2, RotateCcw, SlidersHorizontal, X, FolderHeart, Check } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -6,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { api, type Recording, type AvailableRecording, type PlaudStatus } from '@/lib/api'
+import { api, type Recording, type AvailableRecording } from '@/lib/api'
 import { formatDuration, formatRelativeDate } from '@/lib/utils'
 
 const statusColors: Record<string, 'warning' | 'default' | 'success' | 'destructive'> = {
@@ -26,7 +27,6 @@ export function Dashboard() {
   const [retention, setRetention] = useState<'active' | 'trash'>('active')
   const [available, setAvailable] = useState<AvailableRecording[]>([])
   const [selectedImports, setSelectedImports] = useState<Set<string>>(new Set())
-  const [plaudStatus, setPlaudStatus] = useState<PlaudStatus | null>(null)
   const [scanning, setScanning] = useState(false)
   const [importing, setImporting] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -35,12 +35,8 @@ export function Dashboard() {
     setLoading(true)
     setError('')
     try {
-      const [recs, nextAvailable] = await Promise.all([
-        api.getRecordings({ retention, limit: '100' }),
-        api.getAvailableRecordings(),
-      ])
+      const recs = await api.getRecordings({ retention, limit: '100' })
       setRecordings(recs)
-      setAvailable(nextAvailable)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load recordings')
     } finally {
@@ -50,10 +46,19 @@ export function Dashboard() {
 
   useEffect(() => {
     void loadDashboard()
-    void api.getPlaudStatus().then(setPlaudStatus).catch(() => undefined)
     window.addEventListener('plaud:sync-complete', loadDashboard)
     return () => window.removeEventListener('plaud:sync-complete', loadDashboard)
   }, [loadDashboard])
+
+  useEffect(() => {
+    let disposed = false
+    const loadFolder = () => api.getAvailableRecordings()
+      .then(rows => { if (!disposed) setAvailable(rows) })
+      .catch(() => { if (!disposed) setAvailable([]) })
+    void loadFolder()
+    window.addEventListener('plaud:sync-complete', loadFolder)
+    return () => { disposed = true; window.removeEventListener('plaud:sync-complete', loadFolder) }
+  }, [])
 
   const deferredSearch = useDeferredValue(search)
 
@@ -69,7 +74,6 @@ export function Dashboard() {
     setScanning(true)
     setError('')
     try {
-      setPlaudStatus(await api.getPlaudStatus())
       setAvailable(await api.getAvailableRecordings())
     } catch (scanError) {
       setError(scanError instanceof Error ? scanError.message : 'Plaud scan failed')
@@ -88,6 +92,7 @@ export function Dashboard() {
       await api.importRecordings(paths)
       setSelectedImports(new Set())
       await loadDashboard()
+      await scanPlaud()
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'Import failed')
     } finally {
@@ -111,12 +116,8 @@ export function Dashboard() {
       <div className="library-heading">
         <div>
           <h1>Recordings</h1>
-          <p>Every voice note, ready to play, search, and shape.</p>
         </div>
-        <Button className="hidden sm:inline-flex" onClick={() => void importSelected()} disabled={importing || unimported.length === 0}>
-          {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-          Import from Plaud
-        </Button>
+        <PlaudImportDialog />
       </div>
 
       <div className="library-tools">
@@ -137,42 +138,29 @@ export function Dashboard() {
         </Button>
       </div>
 
-      {retention === 'active' && (
+      {retention === 'active' && <Link to="/devices" className="device-connection"><span><strong>Plaud Note Pro</strong><p>Device recordings</p></span><Bluetooth aria-hidden="true" /></Link>}
+      {retention === 'active' && available.length > 0 && (
         <section className="plaud-inbox" aria-labelledby="plaud-import-heading">
           <div className="plaud-inbox-content">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="plaud-inbox-copy">
                 <span className="plaud-inbox-icon"><Bluetooth aria-hidden="true" /></span>
                 <div>
-                <h2 id="plaud-import-heading">Plaud inbox</h2>
+                <h2 id="plaud-import-heading">Folder imports</h2>
                 <p className="text-sm text-muted-foreground">
-                  {!plaudStatus
-                    ? 'Checking device and export folder…'
-                    : !plaudStatus.transferAvailable
-                      ? plaudStatus.deviceDetected
-                        ? `${plaudStatus.deviceName ?? 'Plaud device'} connected. Choose an export folder to receive its audio.`
-                        : 'Choose the Plaud export folder to discover recordings.'
-                      : plaudStatus.deviceDetected
-                        ? `${plaudStatus.deviceName ?? 'Plaud device'} connected. ${unimported.length} recording${unimported.length === 1 ? '' : 's'} ready to import.`
-                        : unimported.length > 0
-                          ? `${unimported.length} new recording${unimported.length === 1 ? '' : 's'} ready to import.`
-                          : 'Export a recording from Plaud to make it appear here.'}
+                  {unimported.length > 0 ? `${unimported.length} file${unimported.length === 1 ? '' : 's'} ready to import from the configured folder.` : 'All files in this folder are already in the vault.'}
                 </p>
                 </div>
               </div>
               <div className="plaud-inbox-actions">
                 <Button variant="ghost" size="sm" onClick={() => void scanPlaud()} disabled={scanning}>
                   {scanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                  Scan
+                  Refresh folder
                 </Button>
-                {plaudStatus && !plaudStatus.transferAvailable ? (
-                  <Button asChild size="sm"><Link to="/settings"><FolderHeart className="mr-2 h-4 w-4" />Set folder</Link></Button>
-                ) : (
                   <Button size="sm" onClick={() => void importSelected()} disabled={importing || unimported.length === 0}>
                     {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                     Import {selectedImports.size || unimported.length || ''}
                   </Button>
-                )}
               </div>
             </div>
             {unimported.length > 0 && (

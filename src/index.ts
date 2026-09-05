@@ -19,7 +19,9 @@ import { searchTranscripts } from './search/transcripts';
 import { homedir } from 'os';
 import plaudApi from './api/plaud';
 import mobileApi from './api/mobile';
-import { purgeExpiredTrash, saveTranscriptVersion } from './library/recording-library';
+import transcriptsApi from './api/transcripts';
+import { purgeExpiredTrash } from './library/recording-library';
+import { saveGeneratedTranscript } from './library/transcript-history';
 import { forwardRecordingWithRetry } from './library/forwarding';
 
 // ============================================
@@ -60,36 +62,16 @@ jobQueue.register('process-recording', async (data: any) => {
   const result = await router.transcribeFile(filePath);
 
   if (result.success) {
-    await saveTranscriptVersion({
+    const documentUpdated = saveGeneratedTranscript({
       recordingId,
       fullText: result.fullText,
       segments: result.segments,
-      origin: 'generated',
-    });
-    // Store transcript
-    await db.insert(transcripts).values({
-      recordingId,
-      fullText: result.fullText,
-      segments: result.segments as any,
       wordCount: result.wordCount,
       speakerCount: result.speakerCount,
-      confidenceScore: result.confidence,
-    }).onConflictDoUpdate({
-      target: transcripts.recordingId,
-      set: {
-        fullText: result.fullText,
-        segments: result.segments as any,
-        wordCount: result.wordCount,
-        speakerCount: result.speakerCount,
-        confidenceScore: result.confidence,
-        summary: null,
-        extractedTasks: null,
-        analyzedAt: null,
-        createdAt: new Date().toISOString(),
-      },
+      confidence: result.confidence,
     });
 
-    if (settings.autoSummarize === 'true') {
+    if (documentUpdated && settings.autoSummarize === 'true') {
       await db.update(recordings).set({ status: 'summarizing' }).where(eq(recordings.id, recordingId));
       try {
         const { recordingAnalyzer } = await import('./analysis/analyzer');
@@ -154,7 +136,7 @@ app.use('/api/*', async (c, next) => {
 app.get('/health', (c) => c.json({ status: 'ok', jobs: jobQueue.getStats() }));
 app.get('/api/info', (c) => c.json({
   name: 'plaud-app',
-  version: '0.1.0',
+  version: '0.2.0',
   status: 'ok',
   engines: transcriptionRouter.status(),
 }));
@@ -163,6 +145,7 @@ app.get('/api/info', (c) => c.json({
 app.route('/api/recordings', recordingsApi);
 app.route('/api/plaud', plaudApi);
 app.route('/api/mobile', mobileApi);
+app.route('/api/transcripts', transcriptsApi);
 
 // Settings
 app.get('/api/settings', async (c) => {
@@ -241,6 +224,11 @@ app.get('/*', serveStatic({ path: './web/dist/index.html' }));
 async function startFolderSync() {
   const savedSettings = await db.select().from(userSettings);
   const settings = Object.fromEntries(savedSettings.map(setting => [setting.key, setting.value]));
+  // Manual folder import must not request Documents access during Bluetooth-only startup.
+  if (settings.autoImport !== 'true') {
+    console.log('[Startup] Automatic folder import is disabled');
+    return;
+  }
   const configuredPath = settings.syncFolderPath?.startsWith('~/')
     ? `${homedir()}/${settings.syncFolderPath.slice(2)}`
     : settings.syncFolderPath;
@@ -248,10 +236,6 @@ async function startFolderSync() {
   if (!watcher.isConfigured()) return;
 
   watcher.startWatching();
-  if (settings.autoImport !== 'true') {
-    console.log('[Startup] Plaud folder detection ready; auto-import is disabled');
-    return;
-  }
   const result = await watcher.syncAll();
   console.log(`[Startup] Folder sync: ${result.added} added, ${result.skipped} skipped`);
 }
@@ -268,5 +252,7 @@ console.log(`[PlaudApp] Starting on http://${hostname}:${port}`);
 export default {
   port,
   hostname,
+  // CoreBluetooth discovery can take up to 35 seconds before returning a result.
+  idleTimeout: 60,
   fetch: app.fetch,
 };

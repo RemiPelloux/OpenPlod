@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 
 const testRoot = mkdtempSync(join(tmpdir(), 'openplod-library-'));
 const previousDatabaseUrl = process.env.DATABASE_URL;
@@ -24,6 +25,8 @@ const {
 } = await import('./recording-library');
 const { default: mobileApi } = await import('../api/mobile');
 const { default: recordingsApi } = await import('../api/recordings');
+const { default: transcriptsApi } = await import('../api/transcripts');
+const { saveGeneratedTranscript } = await import('./transcript-history');
 const { FolderWatcher } = await import('../sync/folder-watcher');
 
 beforeAll(() => initializeDatabase());
@@ -37,7 +40,25 @@ afterAll(() => {
 });
 
 describe('recording library', () => {
-  test('discovers nested Plaud exports and ignores unsupported files', () => {
+  test('lists transcript documents with Plaud provenance and excludes Trash', async () => {
+    const sourcePath = join(testRoot, 'markdown-document.ogg');
+    writeFileSync(sourcePath, 'transcript-library-audio');
+    const imported = await importRecordingFile({ sourcePath, provenance: {
+      sourceProvider: 'plaud', sourceTransport: 'mobile', sourceRecordingId: 'device-document',
+    } });
+    await db.insert(transcripts).values({ recordingId: imported.recording.id, fullText: '# Field notes\n\nActual text', wordCount: 5 });
+    const listed = await transcriptsApi.request('/?source=plaud');
+    expect(await listed.json()).toMatchObject({ data: [expect.objectContaining({
+      recordingId: imported.recording.id, sourceProvider: 'plaud', excerpt: '# Field notes\n\nActual text', wordCount: 5,
+    })], pagination: { hasMore: false } });
+    expect(await (await transcriptsApi.request('/?source=opennotes')).json()).toMatchObject({ data: [] });
+    await softDeleteRecording(imported.recording.id);
+    expect(await (await transcriptsApi.request('/?source=plaud')).json()).toMatchObject({ data: [] });
+    await restoreRecording(imported.recording.id);
+    expect(await (await transcriptsApi.request('/?source=plaud&offset=1')).json()).toMatchObject({ data: [] });
+  });
+
+  test('discovers nested Plaud exports and ignores unsupported files', async () => {
     const exportRoot = join(testRoot, 'plaud-exports');
     const nested = join(exportRoot, '2026-09-05_voice-note');
     mkdirSync(nested, { recursive: true });
@@ -46,7 +67,7 @@ describe('recording library', () => {
     writeFileSync(join(nested, 'voice-note.wav'), 'audio-two');
     writeFileSync(join(exportRoot, 'metadata.json'), '{}');
 
-    const recordings = new FolderWatcher(exportRoot).listRecordings();
+    const recordings = await new FolderWatcher(exportRoot).listRecordings();
 
     expect(recordings.map(recording => recording.filename).sort()).toEqual([
       'meeting.M4A',
@@ -55,12 +76,12 @@ describe('recording library', () => {
     expect(recordings.every(recording => recording.size > 0)).toBe(true);
   });
 
-  test('reports a missing Plaud export folder as not configured', () => {
+  test('reports a missing Plaud export folder as not configured', async () => {
     const watcher = new FolderWatcher(join(testRoot, 'missing-plaud-folder'));
 
     expect(watcher.isConfigured()).toBe(false);
-    expect(watcher.listRecordings()).toEqual([]);
-    expect(watcher.getStatus()).toMatchObject({ configured: false, recordingCount: 0 });
+    expect(await watcher.listRecordings()).toEqual([]);
+    expect(await watcher.getStatus()).toMatchObject({ configured: false, recordingCount: 0 });
   });
 
   test('deduplicates imports by content fingerprint and provider id', async () => {
@@ -118,9 +139,26 @@ describe('recording library', () => {
       .where(eq(transcriptVersions.recordingId, imported.recording.id));
     expect(current.fullText).toBe('User corrected text');
     expect(current.wordCount).toBe(3);
-    expect(versions).toEqual([
+    expect(versions).toHaveLength(2);
+    expect(versions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fullText: 'Generated text', origin: 'generated' }),
       expect.objectContaining({ fullText: 'User corrected text', origin: 'edited' }),
-    ]);
+    ]));
+    const regenerated = saveGeneratedTranscript({ recordingId: imported.recording.id, fullText: 'Regenerated text',
+      segments: [], wordCount: 2, speakerCount: 1, confidence: 1 });
+    expect(regenerated).toBe(false);
+    expect((await db.select().from(transcripts).where(eq(transcripts.recordingId, imported.recording.id)))[0])
+      .toMatchObject({ fullText: 'User corrected text', origin: 'edited' });
+    expect(await db.select().from(transcriptVersions).where(eq(transcriptVersions.recordingId, imported.recording.id)))
+      .toHaveLength(3);
+    const stale = await recordingsApi.request(`/${imported.recording.id}/transcript`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fullText: 'Stale edit', revision: 1 }),
+    });
+    expect(stale.status).toBe(409);
+    const malformed = await recordingsApi.request(`/${imported.recording.id}/transcript`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fullText: 42 }),
+    });
+    expect(malformed.status).toBe(400);
   });
 
   test('soft deletes, restores, and purges expired trash with its audio', async () => {
@@ -167,6 +205,45 @@ describe('recording library', () => {
 });
 
 describe('mobile pairing', () => {
+  test('validates audio bytes before durable acknowledgement and preserves duration', async () => {
+    const sourceId = '881-test:1788589200';
+    const content = 'native-note-pro-audio';
+    const fingerprint = createHash('sha256').update(content).digest('hex');
+    const first = await uploadPlaud({ content, fingerprint, sourceId });
+    const payload = await first.json() as { data: { recordingId: string; fingerprint: string } };
+    expect(first.status).toBe(201);
+    expect(payload.data.fingerprint).toBe(fingerprint);
+    const [stored] = await db.select().from(recordings).where(eq(recordings.id, payload.data.recordingId));
+    expect(stored.durationSeconds).toBe(14);
+    expect(await Bun.file(stored.filePath).text()).toBe(content);
+    const retry = await uploadPlaud({ content, fingerprint, sourceId });
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toMatchObject({ data: { recordingId: stored.id, added: false } });
+  });
+
+  test('rejects corrupted uploads without inserting a recording', async () => {
+    const sourceId = '881-test:corrupt';
+    const response = await uploadPlaud({ content: 'corrupted', fingerprint: 'a'.repeat(64), sourceId });
+    expect(response.status).toBe(409);
+    expect(await db.select().from(recordings).where(eq(recordings.sourceRecordingId, sourceId))).toHaveLength(0);
+  });
+
+  test('rejects a reused device ID with different audio without overwriting the vault', async () => {
+    const sourceId = '881-test:conflict';
+    const fingerprint = createHash('sha256').update('original').digest('hex');
+    const first = await uploadPlaud({ content: 'original', fingerprint, sourceId });
+    const payload = await first.json() as { data: { recordingId: string } };
+    const changed = await uploadPlaud({ content: 'different', fingerprint: createHash('sha256').update('different').digest('hex'), sourceId });
+    expect(changed.status).toBe(409);
+    const [stored] = await db.select().from(recordings).where(eq(recordings.id, payload.data.recordingId));
+    expect(await Bun.file(stored.filePath).text()).toBe('original');
+  });
+
+  test('rejects empty audio and malformed fingerprints', async () => {
+    expect((await uploadPlaud({ content: '', fingerprint: 'a'.repeat(64), sourceId: 'empty' })).status).toBe(400);
+    expect((await uploadPlaud({ content: 'audio', fingerprint: 'invalid', sourceId: 'invalid' })).status).toBe(400);
+  });
+
   test('rejects missing or invalid pairing tokens', async () => {
     const missing = await mobileApi.request('/health');
     const invalid = await mobileApi.request('/health', {
@@ -217,6 +294,18 @@ describe('mobile pairing', () => {
     expect(await Bun.file(stored.filePath).exists()).toBe(true);
   });
 });
+
+function uploadPlaud(input: { content: string; fingerprint: string; sourceId: string }) {
+  const body = new FormData();
+  body.append('file', new File([input.content], 'note-pro.mp3', { type: 'audio/mpeg' }));
+  body.append('source_provider', 'plaud');
+  body.append('source_recording_id', input.sourceId);
+  body.append('fingerprint', input.fingerprint);
+  body.append('duration_ms', '14000');
+  return mobileApi.request('/recordings', {
+    method: 'POST', headers: { 'X-OpenPlod-Token': 'test-pairing-token' }, body,
+  });
+}
 
 function restoreEnv(name: string, value: string | undefined) {
   if (value === undefined) delete process.env[name];

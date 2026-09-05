@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "OpenPlod",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.openplod.vault",
   "build": {
     "frontendDist": "../web/dist",
@@ -29,7 +29,7 @@
     "active": true,
     "targets": "all",
     "externalBin": ["binaries/openplod-server"],
-    "resources": ["resources/scan-plaud.swift"],
+    "resources": { "resources/scan-plaud.swift": "resources/scan-plaud.swift", "../scripts/plaud-bridge.swift": "resources/plaud-bridge.swift" },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

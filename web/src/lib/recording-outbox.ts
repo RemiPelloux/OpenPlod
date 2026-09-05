@@ -10,6 +10,10 @@ export interface PendingCapture {
   context: string
   recordedAt: string
   durationMs: number
+  sourceProvider?: 'opennotes' | 'plaud' | 'upload'
+  sourceTransport?: 'mobile' | 'upload'
+  sourceRecordingId?: string
+  nativeShareId?: string
 }
 
 export async function savePendingCapture(capture: PendingCapture): Promise<void> {

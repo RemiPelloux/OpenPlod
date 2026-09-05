@@ -159,7 +159,7 @@ function QrScanner({ onResult, onCancel, onError }: { onResult: (value: string) 
 async function waitForDesktop(origin: string): Promise<void> {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     try {
-      const response = await fetch(`${origin}/health`)
+      const response = await fetch(`${origin}/health`, { signal: AbortSignal.timeout(1000) })
       if (response.ok) return
     } catch {
       // The bundled service may still be opening its database.

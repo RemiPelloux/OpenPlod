@@ -86,6 +86,11 @@ app.post('/import', async c => {
     const body = await c.req.parseBody();
     const file = body.file;
     if (!(file instanceof File)) return c.json({ success: false, error: 'Audio file is required.' }, 400);
+    if (file.size === 0) return c.json({ success: false, error: 'Audio file is empty.' }, 400);
+    const durationMs = body.duration_ms === undefined ? undefined : Number(body.duration_ms);
+    if (durationMs !== undefined && (!Number.isFinite(durationMs) || durationMs < 0)) {
+      return c.json({ success: false, error: 'Recording duration is invalid.' }, 400);
+    }
     const incomingDir = incomingDirectory();
     mkdirSync(incomingDir, { recursive: true });
     const incomingPath = resolve(incomingDir, `${crypto.randomUUID()}-${safeFilename(file.name)}`);
@@ -94,6 +99,9 @@ app.post('/import', async c => {
       const result = await importRecordingFile({
         sourcePath: incomingPath,
         originalFilename: safeFilename(file.name),
+        metadata: { context: typeof body.context === 'string' ? body.context : null,
+          recordingType: typeof body.recording_type === 'string' && ['class', 'meeting', 'conversation', 'other'].includes(body.recording_type)
+            ? body.recording_type : undefined, durationMs },
         provenance: {
           sourceProvider: body.source_provider === 'plaud' ? 'plaud' : body.source_provider === 'opennotes' ? 'opennotes' : 'upload',
           sourceRecordingId: typeof body.source_recording_id === 'string' ? body.source_recording_id : null,
@@ -188,15 +196,23 @@ app.post('/:id/replace-audio', async c => {
 });
 
 app.patch('/:id/transcript', async c => {
-  const body = await c.req.json<{ fullText: string; segments?: unknown }>();
-  await updateTranscript({ recordingId: c.req.param('id'), ...body });
+  const body = await c.req.json<{ fullText: string; segments?: unknown; revision?: number }>();
+  if (typeof body.fullText !== 'string' || (body.revision !== undefined && !Number.isSafeInteger(body.revision))) {
+    return c.json({ success: false, error: 'Transcript text and a valid revision are required.' }, 400);
+  }
+  try {
+    updateTranscript({ recordingId: c.req.param('id'), fullText: body.fullText, segments: body.segments, revision: body.revision });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Transcript update failed.';
+    return c.json({ success: false, error: message }, message === 'revision_conflict' ? 409 : 400);
+  }
   return c.json({ success: true });
 });
 
 app.get('/:id/transcript/versions', async c => {
   const rows = sqlite.query(`
     SELECT id, recording_id AS recordingId, full_text AS fullText, segments, origin, created_at AS createdAt
-    FROM transcript_versions WHERE recording_id = ? ORDER BY created_at DESC
+    FROM transcript_versions WHERE recording_id = ? ORDER BY created_at DESC, rowid DESC
   `).all(c.req.param('id'));
   return c.json({ success: true, data: rows });
 });
@@ -257,6 +273,8 @@ app.get('/:id', async (c) => {
         transcript: transcript ? {
           id: transcript.id,
           fullText: transcript.fullText,
+          origin: transcript.origin,
+          currentVersionId: transcript.currentVersionId,
           segments: transcript.segments,
           wordCount: transcript.wordCount,
           speakerCount: transcript.speakerCount,

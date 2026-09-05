@@ -1,12 +1,15 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from '@/components/Layout'
 import { Loader2 } from 'lucide-react'
 import { RuntimeGate } from '@/components/RuntimeGate'
+import { SharedAudioRouter } from '@/components/SharedAudioRouter'
+
+const DevicesPage = lazy(() => import('@/pages/DevicesPage').then(module => ({ default: module.DevicesPage })))
 
 const Dashboard = lazy(() => import('@/pages/Dashboard').then(module => ({ default: module.Dashboard })))
 const RecordingDetail = lazy(() => import('@/pages/RecordingDetail').then(module => ({ default: module.RecordingDetail })))
-const SearchPage = lazy(() => import('@/pages/SearchPage').then(module => ({ default: module.SearchPage })))
+const TranscriptsPage = lazy(() => import('@/pages/TranscriptsPage').then(module => ({ default: module.TranscriptsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(module => ({ default: module.SettingsPage })))
 const RecordingPage = lazy(() => import('@/pages/RecordingPage').then(module => ({ default: module.RecordingPage })))
 
@@ -22,13 +25,17 @@ export default function App() {
   return (
     <RuntimeGate>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <SharedAudioRouter />
         <Suspense fallback={<PageFallback />}>
           <Routes>
             <Route element={<Layout />}>
+              <Route path="/devices" element={<DevicesPage />} />
               <Route path="/" element={<Dashboard />} />
               <Route path="/recording/:id" element={<RecordingDetail />} />
               <Route path="/record" element={<RecordingPage />} />
-              <Route path="/search" element={<SearchPage />} />
+              <Route path="/transcripts" element={<TranscriptsPage />} />
+              <Route path="/transcripts/:id" element={<RecordingDetail backPath="/transcripts" />} />
+              <Route path="/search" element={<Navigate to="/transcripts" replace />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Routes>

@@ -93,13 +93,14 @@ export class MistralEngine implements TranscriptionEngine {
         method: 'POST',
         headers: { Authorization: `Bearer ${this.apiKey}` },
         body: form,
+        signal: AbortSignal.timeout(180_000),
       });
       if (!response.ok) {
         return failed(`Mistral transcription failed (${response.status} ${response.statusText || 'request error'}).`);
       }
       return normalizeMistralTranscription(await response.json() as MistralResponse);
     } catch (error) {
-      const reason = error instanceof Error && error.name === 'AbortError'
+      const reason = error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name)
         ? 'The Mistral request timed out.'
         : 'Mistral could not be reached.';
       return failed(reason);

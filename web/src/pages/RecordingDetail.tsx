@@ -31,6 +31,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { api, type Recording, type TranscriptSegment, type TranscriptVersion } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
+import { exportDocument, exportOriginalAudio, recordingMarkdown, safeDocumentName as safeName } from '@/lib/document-export'
+import { deviceCommand, supportsPlaudDevice, vaultArguments } from '@/lib/plaud-device'
 
 const waveformHeights = Array.from({ length: 128 }, (_, index) => {
   const wave = Math.sin(index * 0.27) * 23 + Math.sin(index * 0.61) * 16
@@ -52,7 +54,7 @@ function findActiveSegment(segments: TranscriptSegment[], time: number): Transcr
   }
 }
 
-export function RecordingDetail() {
+export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -76,6 +78,7 @@ export function RecordingDetail() {
   const [tagsDraft, setTagsDraft] = useState('')
   const [transcriptDraft, setTranscriptDraft] = useState('')
   const audioRef = useRef<HTMLAudioElement>(null)
+  const audioKey = recording ? recording.fingerprint || recording.filePath : null
 
   const loadRecording = useCallback(async () => {
     if (!id) return
@@ -103,7 +106,7 @@ export function RecordingDetail() {
   }, [loadRecording, recording])
 
   useEffect(() => {
-    if (!id) return
+    if (!id || !audioKey) return
     let disposed = false
     let objectUrl = ''
     api.getAudioObjectUrl(id).then(url => {
@@ -117,7 +120,7 @@ export function RecordingDetail() {
       disposed = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [id, recording?.revision])
+  }, [id, audioKey])
 
   useEffect(() => {
     if (!recording) return
@@ -176,14 +179,14 @@ export function RecordingDetail() {
     setAction('saving')
     setError('')
     try {
-      const updated = await api.updateRecording(recording.id, {
+      await api.updateRecording(recording.id, {
         title: titleDraft,
         context: contextDraft || null,
         notes: notesDraft || null,
         tags: tagsDraft.split(',').map(tag => tag.trim()).filter(Boolean),
         revision: recording.revision,
       })
-      setRecording(updated)
+      await loadRecording()
       setEditingMetadata(false)
       flashSaved(setSaved)
     } catch (saveError) {
@@ -198,7 +201,7 @@ export function RecordingDetail() {
     setAction('saving')
     setError('')
     try {
-      await api.updateTranscript(recording.id, transcriptDraft)
+      await api.updateTranscript(recording.id, transcriptDraft, recording.revision)
       await loadRecording()
       setDocumentMode('preview')
       flashSaved(setSaved)
@@ -229,34 +232,30 @@ export function RecordingDetail() {
     navigate('/')
   }
 
-  const exportMarkdown = () => {
+  const exportCurrent = (format: 'md' | 'txt' | 'json') => {
     if (!recording) return
-    const markdown = [
-      `# ${recording.title}`,
-      '',
-      `- Recorded: ${new Date(recording.recordedAt).toLocaleString()}`,
-      `- Source: ${sourceLabel}`,
-      recording.context ? `- Context: ${recording.context}` : '',
-      '',
-      '## Transcript',
-      '',
-      recording.transcriptText ?? '',
-      recording.notes ? `\n## Notes\n\n${recording.notes}` : '',
-    ].filter(Boolean).join('\n')
-    downloadBlob(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }), `${safeName(recording.title)}.md`)
-  }
-
-  const exportText = () => {
-    if (!recording) return
-    downloadBlob(new Blob([recording.transcriptText ?? ''], { type: 'text/plain;charset=utf-8' }), `${safeName(recording.title)}.txt`)
+    const provenance = { versionId: selectedVersion?.id ?? recording.transcriptVersionId ?? null,
+      origin: selectedVersion?.origin ?? recording.transcriptOrigin ?? null }
+    const content = format === 'md' ? recordingMarkdown(recording, displayText, provenance) : format === 'txt' ? displayText : JSON.stringify({
+      recordingId: recording.id, title: recording.title, recordedAt: recording.recordedAt,
+      sourceProvider: recording.sourceProvider, sourceRecordingId: recording.sourceRecordingId,
+      transcript: displayText, versionId: selectedVersion?.id ?? recording.transcriptVersionId ?? null, origin: selectedVersion?.origin ?? recording.transcriptOrigin ?? null,
+      segments: selectedVersion ? undefined : recording.segments, notes: recording.notes, tags: recording.tags,
+    }, null, 2)
+    void exportDocument({ filename: `${safeName(recording.title)}.${format}`, content,
+      mime: format === 'md' ? 'text/markdown' : format === 'txt' ? 'text/plain' : 'application/json',
+    }).catch(failure => setError(failure instanceof Error ? failure.message : String(failure)))
   }
 
   const exportAudio = () => {
-    if (!recording || !audioUrl) return
-    const link = document.createElement('a')
-    link.href = audioUrl
-    link.download = recording.filename || `${safeName(recording.title)}.webm`
-    link.click()
+    if (!recording) return
+    if (supportsPlaudDevice()) {
+      void deviceCommand('exportVaultRecording', { ...vaultArguments(), recordingId: recording.id, filename: recording.filename })
+        .catch(failure => setError(failure instanceof Error ? failure.message : String(failure)))
+      return
+    }
+    if (!audioUrl) return
+    void exportOriginalAudio(recording, audioUrl).catch(failure => setError(failure instanceof Error ? failure.message : String(failure)))
   }
 
   const speakerMap = useMemo(() => {
@@ -283,7 +282,7 @@ export function RecordingDetail() {
   return (
     <div className="recording-page">
       <header className="recording-toolbar">
-        <Link to="/" className="recording-back" aria-label="Back to library"><ArrowLeft /></Link>
+        <Link to={backPath} className="recording-back" aria-label={backPath === '/transcripts' ? 'Back to transcripts' : 'Back to library'}><ArrowLeft /></Link>
         <div className="recording-title-block">
           {editingMetadata ? (
             <input value={titleDraft} onChange={event => setTitleDraft(event.target.value)} className="recording-title-input" aria-label="Recording title" />
@@ -298,8 +297,9 @@ export function RecordingDetail() {
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content className="action-menu" align="end" sideOffset={6}>
-                <DropdownMenu.Item onSelect={exportMarkdown}><FileText />Markdown document</DropdownMenu.Item>
-                <DropdownMenu.Item onSelect={exportText}><FileText />Transcript text</DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => exportCurrent('md')}><FileText />Markdown document</DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => exportCurrent('txt')}><FileText />Transcript text</DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => exportCurrent('json')}><FileText />JSON with metadata</DropdownMenu.Item>
                 <DropdownMenu.Item onSelect={exportAudio}><FileAudio />Original audio</DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
@@ -375,7 +375,7 @@ export function RecordingDetail() {
               <button type="button" className={documentMode === 'timestamps' ? 'active' : ''} onClick={() => setDocumentMode('timestamps')}>Transcript</button>
             </div>
             {documentMode === 'edit' && (
-              <Button size="sm" onClick={() => void saveTranscript()} disabled={action !== null || !recording.transcriptText}><Save />Save version</Button>
+              <Button size="sm" onClick={() => void saveTranscript()} disabled={action !== null || recording.transcriptText === undefined}><Save />Save version</Button>
             )}
           </div>
 
@@ -385,8 +385,8 @@ export function RecordingDetail() {
 
           <article className="document-surface">
             {documentMode === 'edit' ? (
-              recording.transcriptText ? (
-                <textarea className="markdown-editor" value={transcriptDraft} onChange={event => setTranscriptDraft(event.target.value)} spellCheck />
+              recording.transcriptText !== undefined ? (
+                <textarea className="markdown-editor" aria-label="Transcript Markdown" value={transcriptDraft} onChange={event => setTranscriptDraft(event.target.value)} spellCheck />
               ) : <TranscriptEmpty action={action} onTranscribe={() => void runAction('transcribing')} />
             ) : documentMode === 'timestamps' ? (
               recording.segments?.length ? (
@@ -466,19 +466,6 @@ function TranscriptEmpty({ action, onTranscribe }: { action: BusyAction; onTrans
       <Button onClick={onTranscribe} disabled={action !== null}>{action === 'transcribing' ? <Loader2 className="animate-spin" /> : <Sparkles />}Transcribe audio</Button>
     </div>
   )
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-function safeName(value: string): string {
-  return value.replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '-').slice(0, 90) || 'recording'
 }
 
 function formatRecordingDate(value: string): string {

@@ -51,6 +51,8 @@ export const transcripts = sqliteTable('transcripts', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   recordingId: text('recording_id').references(() => recordings.id, { onDelete: 'cascade' }).notNull(),
   fullText: text('full_text').notNull(),
+  origin: text('origin').notNull().default('generated'),
+  currentVersionId: text('current_version_id'),
   segments: text('segments', { mode: 'json' }), // JSON array of {start, end, text, speaker}
   wordCount: integer('word_count'),
   speakerCount: integer('speaker_count'),

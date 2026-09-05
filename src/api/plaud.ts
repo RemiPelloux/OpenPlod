@@ -7,19 +7,63 @@ import { recordings, userSettings } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { fingerprintFile } from '../library/recording-library';
 import { FolderWatcher } from '../sync/folder-watcher';
+import { scanDesktopPlaud } from '../sync/desktop-plaud';
+import { cancelDirectPlaud, directPlaudConfigured, importDirectPlaudRecording, readDirectPlaudRecordings } from '../sync/plaud-direct';
 
 const app = new Hono();
+let importJob: { id: string; state: 'running' | 'complete' | 'failed'; result?: Awaited<ReturnType<typeof importDirectPlaudRecording>>; error?: string } | null = null;
+
+app.get('/device-recordings', async c => {
+  c.header('Cache-Control', 'no-store');
+  try {
+    const result = await readDirectPlaudRecordings();
+    const saved = await db.select({ id: recordings.id, sourceId: recordings.sourceRecordingId, retention: recordings.retentionState })
+      .from(recordings).where(eq(recordings.sourceProvider, 'plaud'));
+    return c.json({ success: true, data: result.sessions.map(session => {
+      const existing = saved.find(recording => recording.sourceId === `${result.serial}:${session.sessionId}`);
+      return { ...session, recordingId: existing?.id ?? null, retentionState: existing?.retention ?? null };
+    }), checkedAt: result.checkedAt });
+  } catch (error) {
+    return c.json({ success: false, error: error instanceof Error ? error.message : 'Device recording list unavailable', recordingCount: null }, 503);
+  }
+});
+
+app.post('/device-import', async c => {
+  const body = await c.req.json<{ sessionId?: number; confirm?: boolean }>();
+  if (!body.confirm || !Number.isSafeInteger(body.sessionId)) return c.json({ success: false, error: 'A session ID and import confirmation are required' }, 400);
+  if (importJob?.state === 'running') return c.json({ success: false, error: 'A Plaud import is already running' }, 409);
+  const job: NonNullable<typeof importJob> = { id: crypto.randomUUID(), state: 'running' };
+  importJob = job;
+  void importDirectPlaudRecording(body.sessionId!).then(result => { job.result = result; job.state = 'complete'; })
+    .catch(error => { job.error = error instanceof Error ? error.message : 'Plaud import failed'; job.state = 'failed'; });
+  return c.json({ success: true, data: { id: job.id } }, 202);
+});
+
+app.get('/device-import/:id', c => {
+  c.header('Cache-Control', 'no-store');
+  return importJob?.id === c.req.param('id') ? c.json({ success: true, data: importJob })
+    : c.json({ success: false, error: 'Import job unavailable; refresh the library before retrying' }, 404);
+});
+app.post('/device-cancel', c => { cancelDirectPlaud(); return c.json({ success: true }); });
 
 app.get('/status', async c => {
   const syncPath = await configuredSyncPath();
-  const device = await scanDevice();
+  const device = await scanDesktopPlaud();
+  const folderAvailable = Boolean(syncPath && existsSync(syncPath));
+  c.header('Cache-Control', 'no-store');
   return c.json({
     success: true,
     data: {
       deviceDetected: device.detected,
       deviceName: device.name,
       detail: device.detail,
-      transferAvailable: Boolean(syncPath && existsSync(syncPath)),
+      connectionVerified: device.connectionVerified,
+      directTransferAvailable: directPlaudConfigured(),
+      recordingListState: 'unavailable',
+      deviceRecordingCount: null,
+      folderAvailable,
+      // Legacy field refers only to folder import, never direct-device transfer.
+      transferAvailable: folderAvailable,
       syncPath,
     },
   });
@@ -29,7 +73,7 @@ app.get('/available-recordings', async c => {
   const syncPath = await configuredSyncPath();
   if (!syncPath) return c.json({ success: true, data: [] });
   const watcher = new FolderWatcher(syncPath);
-  const available = await mapWithConcurrency(watcher.listRecordings(), 4, async file => {
+  const available = await mapWithConcurrency(await watcher.listRecordings(), 4, async file => {
     const fingerprint = await fingerprintFile(file.path);
     const durationMs = await audioDurationMs(file.path);
     const [existing] = await db.select({ id: recordings.id, retentionState: recordings.retentionState })
@@ -55,23 +99,6 @@ async function configuredSyncPath(): Promise<string | null> {
   const raw = setting?.value || process.env.PLAUD_SYNC_PATH;
   if (!raw) return null;
   return resolve(raw.startsWith('~/') ? `${homedir()}/${raw.slice(2)}` : raw);
-}
-
-async function scanDevice(): Promise<{ detected: boolean; name: string | null; detail: string }> {
-  if (process.platform !== 'darwin') {
-    return { detected: false, name: null, detail: 'Bluetooth detection is currently available on macOS.' };
-  }
-  const scanScript = process.env.OPENPLOD_SCAN_SCRIPT || 'scripts/scan-plaud.swift';
-  const processHandle = Bun.spawn(['swift', scanScript], { stdout: 'pipe', stderr: 'pipe' });
-  const [output, errorOutput, exitCode] = await Promise.all([
-    new Response(processHandle.stdout).text(),
-    new Response(processHandle.stderr).text(),
-    processHandle.exited,
-  ]);
-  const line = output.split('\n').find(value => /found\s+.*plaud|plaud.*found/i.test(value)) ?? '';
-  const detected = Boolean(line) && /connection verified/i.test(output) && !/no plaud/i.test(output);
-  const detail = output.trim() || errorOutput.trim() || `Plaud scanner exited with code ${exitCode}.`;
-  return { detected, name: detected ? 'Plaud Note Pro' : null, detail };
 }
 
 async function audioDurationMs(filePath: string): Promise<number | null> {

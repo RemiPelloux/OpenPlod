@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { FolderHeart, Loader2, Mic, Moon, RefreshCw, Search, Settings, Sun, Upload } from 'lucide-react'
+import { Bluetooth, FileText, FolderHeart, Loader2, Mic, Moon, Settings, Sun, Upload } from 'lucide-react'
 import { Brand } from '@/components/Brand'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
@@ -9,12 +9,13 @@ import { useTheme } from '@/hooks/useTheme'
 
 const nav = [
   { to: '/', icon: FolderHeart, label: 'Library' },
-  { to: '/search', icon: Search, label: 'Search' },
+  { to: '/transcripts', icon: FileText, label: 'Transcripts' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 const desktopNav = [
   nav[0],
+  { to: '/devices', icon: Bluetooth, label: 'Plaud' },
   { to: '/record', icon: Mic, label: 'Record' },
   ...nav.slice(1),
 ]
@@ -24,7 +25,6 @@ export function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const runtime = getRuntime()
-  const [syncing, setSyncing] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [syncMessage, setSyncMessage] = useState('')
   const clearMessageTimer = useRef<number | null>(null)
@@ -46,19 +46,7 @@ export function Layout() {
     clearMessageTimer.current = window.setTimeout(() => setSyncMessage(''), 4000)
   }
 
-  const handleSync = async () => {
-    setSyncing(true)
-    setSyncMessage('')
-    try {
-      const result = await api.sync()
-      announce(result.errors[0] || (result.added > 0 ? `${result.added} added` : 'Library is up to date'))
-      window.dispatchEvent(new CustomEvent('plaud:sync-complete'))
-    } catch (error) {
-      announce(error instanceof Error ? error.message : 'Sync failed')
-    } finally {
-      setSyncing(false)
-    }
-  }
+  const handleSync = () => navigate('/devices')
 
   const handleUpload = async (file: File) => {
     setUploading(true)
@@ -87,9 +75,9 @@ export function Layout() {
           ))}
         </nav>
         <div className="sidebar-actions">
-          <Button variant="ghost" size="sm" className="w-full justify-start gap-3" onClick={() => void handleSync()} disabled={syncing}>
-            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-            Sync Plaud
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-3" onClick={() => uploadRef.current?.click()} disabled={uploading}>
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            Import audio
           </Button>
           <Button variant="ghost" size="sm" className="w-full justify-start gap-3" onClick={toggle}>
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -103,8 +91,8 @@ export function Layout() {
         {!captureMode && <header className="mobile-header">
           <Brand />
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => void handleSync()} disabled={syncing} aria-label="Sync recordings" title="Sync recordings">
-              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleSync} aria-label="Open Plaud" title="Open Plaud">
+              <Bluetooth className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon" className="h-9 w-9" onClick={toggle} aria-label={dark ? 'Use light mode' : 'Use dark mode'} title={dark ? 'Use light mode' : 'Use dark mode'}>
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -131,9 +119,9 @@ export function Layout() {
           <NavLink to="/settings" className={({ isActive }) => `mobile-nav-item mobile-nav-settings ${isActive ? 'active' : ''}`}>
             <Settings aria-hidden="true" /><span>Settings</span>
           </NavLink>
-          <button className="mobile-nav-item" type="button" onClick={() => uploadRef.current?.click()} disabled={uploading}>
-            {uploading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Upload aria-hidden="true" />}<span>Import</span>
-          </button>
+          <NavLink to="/devices" className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`}>
+            <Bluetooth aria-hidden="true" /><span>Plaud</span>
+          </NavLink>
         </nav>}
       </div>
     </div>

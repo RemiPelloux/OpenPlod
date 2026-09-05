@@ -1,6 +1,6 @@
 import { sqlite } from './client';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 export function initializeDatabase() {
   sqlite.exec(`
@@ -97,6 +97,20 @@ export function initializeDatabase() {
             origin TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
           );
+        `);
+      }
+      if (version.user_version < 3) {
+        sqlite.exec(`
+          ALTER TABLE transcripts ADD COLUMN origin TEXT NOT NULL DEFAULT 'generated';
+          ALTER TABLE transcripts ADD COLUMN current_version_id TEXT;
+          UPDATE transcripts SET current_version_id = (
+            SELECT id FROM transcript_versions v
+            WHERE v.recording_id = transcripts.recording_id AND v.full_text = transcripts.full_text
+            ORDER BY v.created_at DESC, v.rowid DESC LIMIT 1
+          );
+          UPDATE transcripts SET origin = COALESCE((
+            SELECT origin FROM transcript_versions WHERE id = transcripts.current_version_id
+          ), 'generated');
         `);
       }
       // Earlier builds could create multiple transcripts when reprocessing a recording.

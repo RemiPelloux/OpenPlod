@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, Loader2, Mic, Pause, Play, RotateCcw, Square, UploadCloud, WifiOff, X } from 'lucide-react'
+import { ArrowLeft, Check, FileAudio, Loader2, Mic, Pause, Play, RotateCcw, Square, UploadCloud, WifiOff, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { PlaudImportDialog } from '@/components/PlaudImportDialog'
 import { Input } from '@/components/ui/input'
 import { api } from '@/lib/api'
 import { getRuntime } from '@/lib/runtime'
 import { latestPendingCapture, removePendingCapture, savePendingCapture, type PendingCapture } from '@/lib/recording-outbox'
 import { formatDuration } from '@/lib/utils'
+import { completePendingAndroidShare, readPendingAndroidShare } from '@/lib/android-share'
 
 type CaptureState = 'idle' | 'requesting' | 'recording' | 'paused' | 'review' | 'uploading' | 'stored'
 
@@ -44,15 +46,24 @@ export function RecordingPage() {
   }, [])
 
   useEffect(() => {
-    latestPendingCapture().then(pending => {
+    const restoreCapture = async () => {
+      const shared = await readPendingAndroidShare()
+      const pending = shared ?? await latestPendingCapture()
       if (!pending) return
+      if (shared) {
+        await savePendingCapture(shared)
+        if (shared.nativeShareId) completePendingAndroidShare(shared.nativeShareId)
+      }
       setCapture(pending)
       setTitle(pending.title)
       setContext(pending.context)
       setElapsedMs(pending.durationMs)
       setAudioUrl(URL.createObjectURL(pending.blob))
       setState('review')
-    }).catch(() => undefined)
+    }
+    void restoreCapture().catch(importError => {
+      setError(importError instanceof Error ? importError.message : 'The shared recording could not be opened.')
+    })
   }, [])
 
   useEffect(() => {
@@ -148,7 +159,7 @@ export function RecordingPage() {
       releaseMicrophone()
       setState('idle')
       setError(permissionError instanceof Error && permissionError.name === 'NotAllowedError'
-        ? 'Microphone access is off. Allow it in your phone settings, then try again.'
+        ? 'Microphone access is off. Allow OpenPlod in your system settings, then try again.'
         : 'The microphone could not be started.')
     }
   }
@@ -195,7 +206,7 @@ export function RecordingPage() {
     try {
       await savePendingCapture(pending)
     } catch {
-      setError('The recording is ready, but the phone could not save an offline copy.')
+      setError('The recording is ready, but an offline copy could not be saved. Export or store it before leaving.')
     }
   }
 
@@ -211,7 +222,15 @@ export function RecordingPage() {
       const acknowledgement = await api.uploadRecording(
         new File([capture.blob], filename, { type: capture.blob.type }),
         runtime.mode === 'mobile',
-        { recordedAt: capture.recordedAt, context, recordingType: 'other' },
+        {
+          recordedAt: capture.recordedAt,
+          context,
+          recordingType: 'other',
+          sourceProvider: capture.sourceProvider,
+          sourceTransport: capture.sourceTransport,
+          sourceRecordingId: capture.sourceRecordingId,
+          durationMs: capture.durationMs,
+        },
       )
       await removePendingCapture(capture.id)
       setState('stored')
@@ -219,13 +238,13 @@ export function RecordingPage() {
     } catch (uploadError) {
       setState('review')
       setError(uploadError instanceof Error
-        ? `Saved on this phone. ${uploadError.message}`
-        : 'Saved on this phone. Reconnect to your desktop and retry.')
+        ? `Local recording retained. ${uploadError.message}`
+        : 'Local recording retained. Check the vault connection and retry.')
     }
   }
 
   const discard = async () => {
-    if (capture && !window.confirm('Discard this recording from the phone?')) return
+    if (capture && !window.confirm('Discard this local recording?')) return
     if (capture) await removePendingCapture(capture.id).catch(() => undefined)
     if (audioUrl) URL.revokeObjectURL(audioUrl)
     setCapture(null)
@@ -249,7 +268,7 @@ export function RecordingPage() {
     <div className="capture-page">
       <header className="capture-header">
         <Button variant="ghost" size="icon" onClick={goBack} aria-label="Back to library" title="Back to library"><ArrowLeft /></Button>
-        <span>{state === 'review' || state === 'uploading' ? 'Review recording' : 'New recording'}</span>
+        <span>{capture?.sourceProvider === 'plaud' ? 'Import Plaud recording' : state === 'review' || state === 'uploading' ? 'Review recording' : 'New recording'}</span>
         {state === 'review' ? <Button variant="ghost" size="icon" onClick={() => void discard()} aria-label="Discard recording" title="Discard recording"><X /></Button> : <span className="h-10 w-10" />}
       </header>
 
@@ -258,12 +277,12 @@ export function RecordingPage() {
           <div className="capture-ready">
             <div className="capture-orbit"><Mic aria-hidden="true" /></div>
             <div>
-              <h1>Ready when you are</h1>
-              <p>Your recording stays on this phone until the desktop vault confirms storage.</p>
+              <h1>New recording</h1>
             </div>
             <button className="record-trigger" type="button" onClick={() => void startRecording()} disabled={state === 'requesting'} aria-label="Start recording">
               {state === 'requesting' ? <Loader2 className="animate-spin" /> : <Mic />}
             </button>
+            <div className="capture-import-option"><span>or</span><PlaudImportDialog variant="outline" /></div>
           </div>
         ) : isCapturing ? (
           <div className="capture-live">
@@ -281,6 +300,7 @@ export function RecordingPage() {
           <div className="capture-stored" role="status"><span><Check /></span><h1>Stored in your vault</h1><p>Opening the recording...</p></div>
         ) : (
           <div className="capture-review">
+            {capture?.sourceProvider === 'plaud' && <div className="capture-source"><FileAudio />Plaud audio received</div>}
             <div className="capture-review-time">{formatDuration(elapsedMs / 1000)}</div>
             {audioUrl && <audio className="capture-audio" src={audioUrl} controls preload="metadata" />}
             <div className="capture-fields">

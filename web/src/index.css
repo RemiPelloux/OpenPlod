@@ -220,6 +220,8 @@ button:active:not(:disabled), [role="button"]:active { transform: scale(0.97); }
 .capture-control.stop { width: 76px; height: 76px; background: var(--primary); color: var(--primary-foreground); box-shadow: 0 10px 26px color-mix(in srgb, var(--primary) 24%, transparent); }
 .capture-control.stop svg { width: 22px; height: 22px; fill: currentColor; }
 .capture-review { gap: 18px; }
+.capture-source { display: inline-flex; align-items: center; align-self: center; gap: 8px; color: var(--primary); font-size: 13px; font-weight: 650; }
+.capture-source svg { width: 16px; height: 16px; }
 .capture-review-time { font-variant-numeric: tabular-nums; color: var(--muted-foreground); font-size: 14px; font-weight: 650; }
 .capture-audio { width: min(100%, 440px); height: 48px; accent-color: var(--primary); }
 .capture-fields { display: flex; width: 100%; flex-direction: column; gap: 14px; text-align: left; }
@@ -417,3 +419,31 @@ button:active:not(:disabled), [role="button"]:active { transform: scale(0.97); }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted-foreground) 30%, transparent); border-radius: 3px; }
+.device-page { max-width: 780px; margin: 0 auto; padding: 24px; }
+.device-heading, .device-connection, .device-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.device-heading { margin-bottom: 28px; }
+.device-heading h1 { font-family: Georgia, serif; font-size: 32px; margin: 0; }
+.device-heading p, .device-connection p, .device-muted { color: var(--muted-foreground); font-size: 14px; }
+.device-heading > svg { width: 32px; height: 32px; color: var(--primary); }
+.device-connection { padding: 16px 0; border-block: 1px solid var(--border); }
+.device-connection > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.device-connection > button, .device-recording-row > button, .device-recording-row > a { flex-shrink: 0; }
+.device-page button:focus-visible, .device-page a:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.device-connection h2, .device-section h2, .device-desktop h2 { font-size: 17px; margin: 0; }
+.device-actions { display: flex; }
+.device-actions svg, .device-recording-row svg { width: 18px; height: 18px; }
+.device-section { margin-top: 28px; }
+.device-section-heading { margin-bottom: 12px; }
+.device-recording-row, .device-scan-result { display: flex; align-items: center; gap: 12px; min-height: 68px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.device-recording-row > span, .device-scan-result > span:first-of-type { flex: 1; min-width: 0; }
+.device-recording-row strong { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.device-recording-row small, .device-scan-result small { display: block; color: var(--muted-foreground); font-size: 12px; margin-top: 4px; }
+.device-recording-row input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--primary); }
+.device-scan-result { width: 100%; text-align: left; background: transparent; cursor: pointer; }
+.device-error { font-size: 14px; color: var(--destructive); padding: 12px 0; overflow-wrap: anywhere; }
+.device-progress { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; font-size: 13px; }
+.device-progress progress { flex: 1; min-width: 80px; accent-color: var(--primary); }
+.device-desktop { padding-block: 32px; border-top: 1px solid var(--border); }
+.device-desktop > svg { width: 36px; height: 36px; margin-bottom: 16px; color: var(--primary); }
+.device-desktop p { color: var(--muted-foreground); margin-block: 12px 24px; max-width: 48ch; }
+@media (max-width: 640px) { .device-page { padding: 20px 16px; } .device-recording-row button { min-width: 44px; min-height: 44px; } }

@@ -11,6 +11,8 @@ export interface Recording {
   createdAt: string
   status: 'pending' | 'transcribing' | 'summarizing' | 'complete' | 'failed'
   transcriptText?: string
+  transcriptOrigin?: 'generated' | 'edited'
+  transcriptVersionId?: string | null
   summary?: string
   actionItems?: string[]
   speakers?: string[]
@@ -71,6 +73,16 @@ export interface TranscriptVersion {
   createdAt: string
 }
 
+export interface TranscriptDocument {
+  recordingId: string
+  filename: string | null
+  recordedAt: string
+  sourceProvider: string | null
+  durationSeconds: number | null
+  wordCount: number | null
+  excerpt: string
+}
+
 export interface UploadAcknowledgement {
   recordingId: string
   added: boolean
@@ -94,6 +106,11 @@ export interface PlaudStatus {
   deviceName: string | null
   detail: string
   transferAvailable: boolean
+  folderAvailable: boolean
+  connectionVerified: boolean
+  directTransferAvailable: boolean
+  recordingListState: 'unavailable'
+  deviceRecordingCount: number | null
   syncPath: string | null
 }
 
@@ -105,6 +122,15 @@ export interface AvailableRecording {
   durationMs: number | null
   fingerprint: string
   imported: boolean
+  recordingId: string | null
+  retentionState: string | null
+}
+
+export interface DeviceRecording {
+  sessionId: number
+  size: number
+  scene: number
+  timezone: number
   recordingId: string | null
   retentionState: string | null
 }
@@ -126,6 +152,8 @@ interface RawTranscriptSegment {
 
 interface RawTranscript {
   fullText?: string
+  origin?: 'generated' | 'edited'
+  currentVersionId?: string | null
   segments?: RawTranscriptSegment[] | string
   summary?: { overview?: string } | string
   extractedTasks?: Array<string | { title?: string }>
@@ -207,7 +235,9 @@ function mapRecording(r: RawRecording): Recording {
     recordedAt: r.recordedAt || r.uploadedAt || '',
     createdAt: r.uploadedAt || '',
     status: r.status || 'pending',
-    transcriptText: transcript?.fullText || undefined,
+    transcriptText: transcript?.fullText,
+    transcriptOrigin: transcript?.origin,
+    transcriptVersionId: transcript?.currentVersionId,
     summary: transcript?.summary ? (typeof transcript.summary === 'string' ? transcript.summary : transcript.summary.overview) : undefined,
     actionItems: transcript?.extractedTasks
       ?.map(item => typeof item === 'string' ? item : item.title)
@@ -229,6 +259,10 @@ function mapRecording(r: RawRecording): Recording {
 }
 
 export const api = {
+  getTranscriptDocuments: async (options: { source: string; offset: number; signal?: AbortSignal }) => {
+    const query = new URLSearchParams({ source: options.source, offset: String(options.offset) })
+    return fetchJSON<ApiEnvelope<TranscriptDocument[]> & { pagination: { hasMore: boolean } }>(`/transcripts?${query}`, { signal: options.signal })
+  },
   getStats: async (): Promise<DashboardStats> => {
     const res = await fetchJSON<ApiEnvelope<RawStats>>('/recordings/stats/summary')
     const d = res.data
@@ -311,6 +345,26 @@ export const api = {
     return res.data
   },
 
+  getDeviceRecordings: async (signal?: AbortSignal): Promise<DeviceRecording[]> => {
+    const res = await fetchJSON<ApiEnvelope<DeviceRecording[]>>('/plaud/device-recordings', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(150000)]) : AbortSignal.timeout(150000) })
+    return res.data
+  },
+  importDeviceRecording: async (sessionId: number, signal?: AbortSignal): Promise<string> => {
+    const start = await fetchJSON<ApiEnvelope<{ id: string }>>('/plaud/device-import', {
+      method: 'POST', body: JSON.stringify({ sessionId, confirm: true }), signal,
+    })
+    const deadline = Date.now() + 480000
+    while (Date.now() < deadline) {
+      signal?.throwIfAborted()
+      const job = await fetchJSON<ApiEnvelope<{ state: string; error?: string; result?: { recording: { id: string } } }>>(`/plaud/device-import/${start.data.id}`, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000) })
+      if (job.data.state === 'failed') throw new Error(job.data.error || 'Plaud import failed')
+      if (job.data.state === 'complete' && job.data.result) return job.data.result.recording.id
+      await new Promise(resolve => window.setTimeout(resolve, 1000))
+    }
+    throw new Error('Import status timed out. Check the library before retrying.')
+  },
+  cancelDeviceOperation: () => fetchJSON('/plaud/device-cancel', { method: 'POST', signal: AbortSignal.timeout(10000) }),
+
   getAvailableRecordings: async (): Promise<AvailableRecording[]> => {
     const res = await fetchJSON<ApiEnvelope<AvailableRecording[]>>('/plaud/available-recordings')
     return res.data
@@ -323,15 +377,25 @@ export const api = {
   uploadRecording: async (
     file: File,
     fromMobile: boolean,
-    metadata?: { recordedAt?: string; context?: string; recordingType?: string },
+    metadata?: {
+      recordedAt?: string
+      context?: string
+      recordingType?: string
+      sourceProvider?: 'opennotes' | 'plaud' | 'upload'
+      sourceTransport?: 'mobile' | 'upload'
+      sourceRecordingId?: string
+      durationMs?: number
+    },
   ): Promise<UploadAcknowledgement> => {
     const body = new FormData()
     body.append('file', file)
-    body.append('source_provider', fromMobile ? 'opennotes' : 'upload')
-    body.append('source_transport', fromMobile ? 'mobile' : 'upload')
+    body.append('source_provider', metadata?.sourceProvider ?? (fromMobile ? 'opennotes' : 'upload'))
+    body.append('source_transport', metadata?.sourceTransport ?? (fromMobile ? 'mobile' : 'upload'))
     body.append('recorded_at', metadata?.recordedAt ?? new Date().toISOString())
+    if (metadata?.sourceRecordingId) body.append('source_recording_id', metadata.sourceRecordingId)
     if (metadata?.context) body.append('context', metadata.context)
     if (metadata?.recordingType) body.append('recording_type', metadata.recordingType)
+    if (metadata?.durationMs !== undefined) body.append('duration_ms', String(metadata.durationMs))
     if (fromMobile) {
       const res = await fetchJSON<ApiEnvelope<UploadAcknowledgement>>('/mobile/recordings', { method: 'POST', body })
       return res.data
@@ -347,8 +411,8 @@ export const api = {
     return mapRecording(res.data)
   },
 
-  updateTranscript: async (id: string, fullText: string): Promise<void> => {
-    await fetchJSON(`/recordings/${id}/transcript`, { method: 'PATCH', body: JSON.stringify({ fullText }) })
+  updateTranscript: async (id: string, fullText: string, revision: number): Promise<void> => {
+    await fetchJSON(`/recordings/${id}/transcript`, { method: 'PATCH', body: JSON.stringify({ fullText, revision }) })
   },
 
   getTranscriptVersions: async (id: string): Promise<TranscriptVersion[]> => {

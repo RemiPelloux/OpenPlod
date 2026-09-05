@@ -22,6 +22,7 @@ android {
         applicationId = "com.openplod.vault"
         minSdk = 24
         targetSdk = 36
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }
@@ -53,6 +54,10 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    packaging {
+        // Device audio stays Ogg Opus. The SDK's unused MP3 encoder only supports 4 KB pages.
+        jniLibs.excludes.add("**/liblame.so")
+    }
 }
 
 rust {
@@ -60,6 +65,20 @@ rust {
 }
 
 dependencies {
+    implementation(files("libs/plaud-sdk.aar"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("com.jakewharton.timber:timber:4.7.1")
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.9.3")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.9.3")
+    implementation("com.github.tony19:logback-android:2.0.0")
+    implementation("org.slf4j:slf4j-api:1.7.32")
+    implementation("org.bouncycastle:bcprov-jdk15on:1.70")
+    implementation("org.conscrypt:conscrypt-android:2.5.3")
+    implementation("org.java-websocket:Java-WebSocket:1.5.1")
+    implementation("com.google.guava:guava:28.2-android")
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.activity:activity-ktx:1.10.1")

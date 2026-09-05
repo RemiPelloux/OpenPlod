@@ -108,7 +108,9 @@ export function SettingsPage() {
         </div>
       )}
 
-      <Card>
+      <details className="border-b pb-4">
+        <summary className="cursor-pointer text-sm text-muted-foreground">Mobile pairing (deferred)</summary>
+      <Card className="mt-4">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             {runtime.mode === 'desktop' ? <Monitor className="h-4 w-4" /> : <Smartphone className="h-4 w-4" />}
@@ -140,6 +142,7 @@ export function SettingsPage() {
           )}
         </CardContent>
       </Card>
+      </details>
 
       {/* Transcription Engine */}
       <Card>

@@ -4,7 +4,8 @@
  * Files stay on disk; we just track them in SQLite.
  */
 
-import { watch, existsSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { watch, existsSync, unlinkSync } from 'fs';
+import { readdir, stat } from 'node:fs/promises';
 import { join, extname } from 'path';
 import { db } from '../db/client';
 import { recordings, userSettings } from '../db/schema';
@@ -84,23 +85,23 @@ export class FolderWatcher {
   }
 
   /** Scan folder and list all audio files */
-  listRecordings(): PlaudRecording[] {
+  async listRecordings(): Promise<PlaudRecording[]> {
     if (!this.syncPath || !existsSync(this.syncPath)) return [];
     const results: PlaudRecording[] = [];
 
-    const scan = (dir: string) => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const scan = async (dir: string) => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
         const fullPath = join(dir, entry.name);
         if (entry.isDirectory()) {
-          scan(fullPath);
+          await scan(fullPath);
         } else if (this.isAudio(entry.name)) {
-          const stats = statSync(fullPath);
+          const stats = await stat(fullPath);
           results.push({ filename: entry.name, path: fullPath, size: stats.size, modifiedAt: stats.mtime });
         }
       }
     };
 
-    scan(this.syncPath);
+    await scan(this.syncPath);
     return results;
   }
 
@@ -158,7 +159,7 @@ export class FolderWatcher {
     const existingRows = await db.select({ filePath: recordings.filePath }).from(recordings);
     const existingPaths = new Set(existingRows.map(recording => recording.filePath));
 
-    for (const rec of this.listRecordings()) {
+    for (const rec of await this.listRecordings()) {
       try {
         if (existingPaths.has(rec.path)) {
           result.skipped++;
@@ -177,12 +178,12 @@ export class FolderWatcher {
     return result;
   }
 
-  getStatus() {
+  async getStatus() {
     return {
       configured: this.isConfigured(),
       watching: this.isWatching,
       syncPath: this.syncPath,
-      recordingCount: this.isConfigured() ? this.listRecordings().length : 0,
+      recordingCount: this.isConfigured() ? (await this.listRecordings()).length : 0,
     };
   }
 
