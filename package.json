@@ -4,8 +4,14 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/index.ts",
-    "dev:web": "cd web && bun run dev",
-    "build": "cd web && bun run build",
+    "dev:web": "bun run --cwd web dev",
+    "build": "bun run --cwd web build",
+    "build:sidecar": "bun run scripts/build-sidecar.ts",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:ios:init": "tauri ios init",
+    "tauri:android:init": "tauri android init",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "start": "NODE_ENV=production bun run src/index.ts",
@@ -21,6 +27,7 @@
     "@deepgram/sdk": "^3.9.0"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "@types/bun": "^1.4.0",
     "drizzle-kit": "^0.30.0",
     "typescript": "^5.7.0"

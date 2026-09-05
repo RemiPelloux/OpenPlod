@@ -4,7 +4,7 @@
  */
 
 import { WhisperEngine } from './whisper.js';
-import { GroqWhisperEngine } from './groq.js';
+import { MistralEngine } from './mistral.js';
 import { DeepgramEngine } from './deepgram.js';
 import { TranscriptionRouter } from './router.js';
 import { existsSync } from 'fs';
@@ -54,12 +54,12 @@ async function main() {
   }
   console.log();
 
-  // Test Groq
-  console.log('--- Testing Groq Whisper ---');
-  const groq = new GroqWhisperEngine();
-  if (groq.isAvailable()) {
+  // Test Mistral
+  console.log('--- Testing Mistral Voxtral ---');
+  const mistral = new MistralEngine();
+  if (mistral.isAvailable()) {
     const start = Date.now();
-    const result = await groq.transcribeFile(testFile);
+    const result = await mistral.transcribeFile(testFile);
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
     if (result.success) {
       console.log(`  ✅ Success in ${elapsed}s`);
@@ -69,7 +69,7 @@ async function main() {
       console.log(`  ❌ Failed: ${result.error}`);
     }
   } else {
-    console.log('  ⏭️  Not available (set GROQ_API_KEY)');
+    console.log('  ⏭️  Not available (set MISTRAL_API_KEY)');
   }
   console.log();
 

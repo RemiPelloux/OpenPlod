@@ -12,8 +12,25 @@ import { parseByteRange } from './audio';
 import { homedir } from 'os';
 import { createReadStream } from 'fs';
 import { Readable } from 'stream';
+import { existsSync, mkdirSync } from 'fs';
+import { dirname, resolve, sep } from 'path';
+import {
+  importRecordingFile,
+  purgeRecording,
+  replaceRecordingAudio,
+  restoreRecording,
+  softDeleteRecording,
+  updateTranscript,
+} from '../library/recording-library';
+import { forwardRecording } from '../library/forwarding';
+import { queueRecordingProcessing } from '../library/processing';
 
 const app = new Hono();
+
+function incomingDirectory(): string {
+  const libraryPath = process.env.OPENPLOD_LIBRARY_PATH;
+  return libraryPath ? resolve(dirname(libraryPath), 'incoming') : resolve('./data/incoming');
+}
 
 // ============================================
 // List Recordings
@@ -27,12 +44,14 @@ app.get('/', async (c) => {
   const status = c.req.query('status');
   const type = c.req.query('type');
   const search = c.req.query('search');
+  const retention = c.req.query('retention') === 'trash' ? 'trash' : 'active';
 
   try {
     const conditions = [];
     if (status) conditions.push(eq(recordings.status, status));
     if (type) conditions.push(eq(recordings.recordingType, type));
     if (search) conditions.push(like(recordings.originalFilename, `%${search}%`));
+    conditions.push(eq(recordings.retentionState, retention));
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -57,6 +76,155 @@ app.get('/', async (c) => {
   } catch (error) {
     return c.json({ success: false, error: String(error) }, 500);
   }
+});
+
+// Import from the configured Plaud folder or a multipart mobile/file upload.
+app.post('/import', async c => {
+  const contentType = c.req.header('content-type') ?? '';
+  const imported = [];
+  if (contentType.includes('multipart/form-data')) {
+    const body = await c.req.parseBody();
+    const file = body.file;
+    if (!(file instanceof File)) return c.json({ success: false, error: 'Audio file is required.' }, 400);
+    const incomingDir = incomingDirectory();
+    mkdirSync(incomingDir, { recursive: true });
+    const incomingPath = resolve(incomingDir, `${crypto.randomUUID()}-${safeFilename(file.name)}`);
+    await Bun.write(incomingPath, file);
+    try {
+      const result = await importRecordingFile({
+        sourcePath: incomingPath,
+        originalFilename: safeFilename(file.name),
+        provenance: {
+          sourceProvider: body.source_provider === 'plaud' ? 'plaud' : body.source_provider === 'opennotes' ? 'opennotes' : 'upload',
+          sourceRecordingId: typeof body.source_recording_id === 'string' ? body.source_recording_id : null,
+          sourceTransport: body.source_transport === 'mobile' ? 'mobile' : body.source_transport === 'export' ? 'export' : 'upload',
+          recordedAt: typeof body.recorded_at === 'string' ? body.recorded_at : null,
+        },
+      });
+      imported.push(result);
+      if (result.added) {
+        await queueRecordingProcessing({
+          recordingId: result.recording.id,
+          filePath: result.recording.filePath,
+        });
+      }
+    } finally {
+      await Bun.file(incomingPath).delete().catch(() => undefined);
+    }
+  } else {
+    const body = await c.req.json<{ paths?: string[] }>();
+    const root = await configuredSyncPath();
+    if (!root) return c.json({ success: false, error: 'Plaud sync folder is not configured.' }, 400);
+    for (const candidate of body.paths ?? []) {
+      const sourcePath = resolve(candidate);
+      if (sourcePath !== root && !sourcePath.startsWith(`${root}${sep}`)) {
+        return c.json({ success: false, error: 'Import path is outside the Plaud sync folder.' }, 400);
+      }
+      const result = await importRecordingFile({
+        sourcePath,
+        provenance: { sourceProvider: 'plaud', sourceTransport: 'folder' },
+      });
+      imported.push(result);
+      if (result.added) {
+        await queueRecordingProcessing({
+          recordingId: result.recording.id,
+          filePath: result.recording.filePath,
+        });
+      }
+    }
+  }
+  return c.json({ success: true, data: imported }, 201);
+});
+
+app.patch('/:id', async c => {
+  const id = c.req.param('id');
+  const body = await c.req.json<{
+    title?: string;
+    recordedAt?: string;
+    recordingType?: string;
+    context?: string | null;
+    notes?: string | null;
+    tags?: string[];
+    revision: number;
+  }>();
+  const [recording] = await db.select().from(recordings).where(eq(recordings.id, id)).limit(1);
+  if (!recording) return c.json({ success: false, error: 'Not found' }, 404);
+  if (body.revision !== recording.revision) return c.json({ success: false, error: 'revision_conflict', data: recording }, 409);
+  const changes = {
+    originalFilename: body.title ? preserveExtension(body.title, recording.originalFilename) : recording.originalFilename,
+    recordedAt: body.recordedAt ?? recording.recordedAt,
+    recordingType: body.recordingType ?? recording.recordingType,
+    context: body.context === undefined ? recording.context : body.context,
+    notes: body.notes === undefined ? recording.notes : body.notes,
+    tags: body.tags ?? recording.tags,
+    revision: recording.revision + 1,
+  };
+  await db.update(recordings).set(changes).where(eq(recordings.id, id));
+  return c.json({ success: true, data: { ...recording, ...changes } });
+});
+
+app.post('/:id/replace-audio', async c => {
+  const body = await c.req.parseBody();
+  const file = body.file;
+  if (!(file instanceof File)) return c.json({ success: false, error: 'Audio file is required.' }, 400);
+  const incomingDir = incomingDirectory();
+  mkdirSync(incomingDir, { recursive: true });
+  const incomingPath = resolve(incomingDir, `${crypto.randomUUID()}-${safeFilename(file.name)}`);
+  await Bun.write(incomingPath, file);
+  try {
+    await replaceRecordingAudio({
+      recordingId: c.req.param('id'),
+      sourcePath: incomingPath,
+      expectedRevision: Number(body.revision),
+      originalFilename: safeFilename(file.name),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'revision_conflict') return c.json({ success: false, error: error.message }, 409);
+    throw error;
+  } finally {
+    await Bun.file(incomingPath).delete().catch(() => undefined);
+  }
+  return c.json({ success: true });
+});
+
+app.patch('/:id/transcript', async c => {
+  const body = await c.req.json<{ fullText: string; segments?: unknown }>();
+  await updateTranscript({ recordingId: c.req.param('id'), ...body });
+  return c.json({ success: true });
+});
+
+app.get('/:id/transcript/versions', async c => {
+  const rows = sqlite.query(`
+    SELECT id, recording_id AS recordingId, full_text AS fullText, segments, origin, created_at AS createdAt
+    FROM transcript_versions WHERE recording_id = ? ORDER BY created_at DESC
+  `).all(c.req.param('id'));
+  return c.json({ success: true, data: rows });
+});
+
+app.post('/:id/forward', async c => {
+  try {
+    const runId = await forwardRecording(c.req.param('id'));
+    return c.json({ success: true, data: { runId } }, 202);
+  } catch (error) {
+    return c.json({ success: false, error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+});
+
+app.post('/:id/restore', async c => {
+  return await restoreRecording(c.req.param('id'))
+    ? c.json({ success: true })
+    : c.json({ success: false, error: 'Trashed recording not found.' }, 404);
+});
+
+app.delete('/:id', async c => {
+  const permanent = c.req.query('permanent') === 'true';
+  if (permanent && c.req.query('confirm') !== 'true') {
+    return c.json({ success: false, error: 'Permanent purge requires confirm=true.' }, 400);
+  }
+  const changed = permanent
+    ? await purgeRecording(c.req.param('id'))
+    : await softDeleteRecording(c.req.param('id'));
+  return changed ? c.json({ success: true }) : c.json({ success: false, error: 'Not found' }, 404);
 });
 
 // ============================================
@@ -187,6 +355,7 @@ app.get('/stats/summary', async (c) => {
         COALESCE(SUM(recording_type = 'conversation'), 0) AS conversationCount,
         COALESCE(SUM(recording_type = 'other'), 0) AS otherCount
       FROM recordings
+      WHERE retention_state = 'active'
     `).get() as Record<string, number>;
 
     return c.json({
@@ -261,10 +430,28 @@ app.post('/sync', async (c) => {
       : settings.syncFolderPath;
     const watcher = new FolderWatcher(syncPath);
     const result = await watcher.syncAll();
-    return c.json({ success: result.errors.length === 0, data: result }, result.errors.length > 0 ? 400 : 200);
+    return c.json({ success: true, data: result });
   } catch (error) {
     return c.json({ success: false, error: String(error) }, 500);
   }
 });
 
 export default app;
+
+async function configuredSyncPath(): Promise<string | null> {
+  const [setting] = await db.select({ value: userSettings.value }).from(userSettings)
+    .where(eq(userSettings.key, 'syncFolderPath')).limit(1);
+  const raw = setting?.value || process.env.PLAUD_SYNC_PATH;
+  if (!raw) return null;
+  return resolve(raw.startsWith('~/') ? `${homedir()}/${raw.slice(2)}` : raw);
+}
+
+function safeFilename(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 160) || 'recording.m4a';
+}
+
+function preserveExtension(title: string, current: string | null): string {
+  const extension = current?.match(/\.[^.]+$/)?.[0] ?? '';
+  const cleaned = title.trim().slice(0, 200);
+  return cleaned.endsWith(extension) ? cleaned : `${cleaned}${extension}`;
+}

@@ -15,6 +15,18 @@ export interface Recording {
   actionItems?: string[]
   speakers?: string[]
   segments?: TranscriptSegment[]
+  sourceProvider?: string | null
+  sourceRecordingId?: string | null
+  sourceTransport?: string | null
+  fingerprint?: string | null
+  retentionState: 'active' | 'trash'
+  deletedAt?: string | null
+  revision: number
+  notes?: string | null
+  tags: string[]
+  forwardingStatus: string
+  forwardingRunId?: string | null
+  forwardingError?: string | null
 }
 
 export interface TranscriptSegment {
@@ -33,14 +45,35 @@ export interface SearchResult {
 }
 
 export interface Settings {
-  transcriptionEngine: 'whisper' | 'groq' | 'deepgram'
-  groqApiKey?: string
+  transcriptionEngine: 'whisper' | 'mistral' | 'deepgram'
+  mistralApiKey?: string
   deepgramApiKey?: string
-  groqApiKeyConfigured?: boolean
+  mistralApiKeyConfigured?: boolean
   deepgramApiKeyConfigured?: boolean
   syncFolderPath: string
   autoTranscribe: boolean
   autoSummarize: boolean
+  autoImport: boolean
+  plaudRecordingTypes: string[]
+  deleteSourceAfterImport: boolean
+  openWhistleForwarding: boolean
+  openWhistleBaseUrl: string
+  openWhistleApiKey?: string
+  openWhistleApiKeyConfigured?: boolean
+  openWhistleAgentId: string
+}
+
+export interface TranscriptVersion {
+  id: string
+  recordingId: string
+  fullText: string
+  origin: 'generated' | 'edited'
+  createdAt: string
+}
+
+export interface UploadAcknowledgement {
+  recordingId: string
+  added: boolean
 }
 
 export interface DashboardStats {
@@ -54,6 +87,26 @@ export interface SyncResult {
   added: number
   skipped: number
   errors: string[]
+}
+
+export interface PlaudStatus {
+  deviceDetected: boolean
+  deviceName: string | null
+  detail: string
+  transferAvailable: boolean
+  syncPath: string | null
+}
+
+export interface AvailableRecording {
+  filename: string
+  path: string
+  size: number
+  modifiedAt: string
+  durationMs: number | null
+  fingerprint: string
+  imported: boolean
+  recordingId: string | null
+  retentionState: string | null
 }
 
 interface ApiEnvelope<T> {
@@ -90,6 +143,18 @@ interface RawRecording {
   uploadedAt?: string | null
   status?: Recording['status']
   transcript?: RawTranscript | null
+  sourceProvider?: string | null
+  sourceRecordingId?: string | null
+  sourceTransport?: string | null
+  fingerprint?: string | null
+  retentionState?: 'active' | 'trash'
+  deletedAt?: string | null
+  revision?: number
+  notes?: string | null
+  tags?: string[] | string | null
+  forwardingStatus?: string
+  forwardingRunId?: string | null
+  forwardingError?: string | null
 }
 
 interface RawStats {
@@ -97,13 +162,10 @@ interface RawStats {
   totalDurationSeconds?: number
 }
 
-const BASE = '/api'
-
 async function fetchJSON<T>(url: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  })
+  const headers = authenticatedHeaders(opts?.headers)
+  if (!(opts?.body instanceof FormData)) headers.set('Content-Type', 'application/json')
+  const res = await fetch(apiUrl(url), { ...opts, headers })
   const payload = await res.json().catch(() => null) as { error?: string } | null
   if (!res.ok) throw new Error(payload?.error || `API error: ${res.status}`)
   return payload as T
@@ -151,6 +213,18 @@ function mapRecording(r: RawRecording): Recording {
       ?.map(item => typeof item === 'string' ? item : item.title)
       .filter((item): item is string => Boolean(item)),
     segments: segments.length > 0 ? segments : undefined,
+    sourceProvider: r.sourceProvider,
+    sourceRecordingId: r.sourceRecordingId,
+    sourceTransport: r.sourceTransport,
+    fingerprint: r.fingerprint,
+    retentionState: r.retentionState ?? 'active',
+    deletedAt: r.deletedAt,
+    revision: r.revision ?? 1,
+    notes: r.notes,
+    tags: parseTags(r.tags),
+    forwardingStatus: r.forwardingStatus ?? 'not_configured',
+    forwardingRunId: r.forwardingRunId,
+    forwardingError: r.forwardingError,
   }
 }
 
@@ -196,25 +270,33 @@ export const api = {
     const d = res.data
     const engine = typeof d.transcriptionEngine === 'string' ? d.transcriptionEngine : ''
     return {
-      transcriptionEngine: ['whisper', 'groq', 'deepgram'].includes(engine)
+      transcriptionEngine: ['whisper', 'mistral', 'deepgram'].includes(engine)
         ? engine as Settings['transcriptionEngine']
         : 'whisper',
-      groqApiKey: typeof d.groqApiKey === 'string' ? d.groqApiKey : '',
+      mistralApiKey: typeof d.mistralApiKey === 'string' ? d.mistralApiKey : '',
       deepgramApiKey: typeof d.deepgramApiKey === 'string' ? d.deepgramApiKey : '',
-      groqApiKeyConfigured: d.groqApiKeyConfigured === 'true' || d.groqApiKeyConfigured === true,
+      mistralApiKeyConfigured: d.mistralApiKeyConfigured === 'true' || d.mistralApiKeyConfigured === true,
       deepgramApiKeyConfigured: d.deepgramApiKeyConfigured === 'true' || d.deepgramApiKeyConfigured === true,
       syncFolderPath: typeof d.syncFolderPath === 'string' ? d.syncFolderPath : '~/Documents/PlaudSync',
       autoTranscribe: d.autoTranscribe === 'true',
       autoSummarize: d.autoSummarize === 'true',
+      autoImport: d.autoImport === 'true',
+      plaudRecordingTypes: parseRecordingTypes(d.plaudRecordingTypes),
+      deleteSourceAfterImport: d.deleteSourceAfterImport === 'true',
+      openWhistleForwarding: d.openWhistleForwarding === 'true',
+      openWhistleBaseUrl: typeof d.openWhistleBaseUrl === 'string' ? d.openWhistleBaseUrl : '',
+      openWhistleApiKeyConfigured: d.openWhistleApiKeyConfigured === 'true' || d.openWhistleApiKeyConfigured === true,
+      openWhistleAgentId: typeof d.openWhistleAgentId === 'string' ? d.openWhistleAgentId : '',
     }
   },
 
   updateSettings: async (settings: Partial<Settings>): Promise<Settings> => {
     await Promise.all(Object.entries(settings).map(([key, value]) => {
       if (value === undefined) return Promise.resolve()
-      if ((key === 'groqApiKey' || key === 'deepgramApiKey') && value === '') return Promise.resolve()
+      if ((key === 'mistralApiKey' || key === 'deepgramApiKey' || key === 'openWhistleApiKey') && value === '') return Promise.resolve()
       if (key.endsWith('Configured')) return Promise.resolve()
-      return fetchJSON(`/settings/${key}`, { method: 'PUT', body: JSON.stringify({ value: String(value) }) })
+      const serialized = Array.isArray(value) ? JSON.stringify(value) : String(value)
+      return fetchJSON(`/settings/${key}`, { method: 'PUT', body: JSON.stringify({ value: serialized }) })
     }))
     return api.getSettings()
   },
@@ -224,5 +306,118 @@ export const api = {
     return res.data
   },
 
-  getAudioUrl: (id: string): string => `${BASE}/recordings/${id}/audio`,
+  getPlaudStatus: async (): Promise<PlaudStatus> => {
+    const res = await fetchJSON<ApiEnvelope<PlaudStatus>>('/plaud/status')
+    return res.data
+  },
+
+  getAvailableRecordings: async (): Promise<AvailableRecording[]> => {
+    const res = await fetchJSON<ApiEnvelope<AvailableRecording[]>>('/plaud/available-recordings')
+    return res.data
+  },
+
+  importRecordings: async (paths: string[]): Promise<void> => {
+    await fetchJSON('/recordings/import', { method: 'POST', body: JSON.stringify({ paths }) })
+  },
+
+  uploadRecording: async (
+    file: File,
+    fromMobile: boolean,
+    metadata?: { recordedAt?: string; context?: string; recordingType?: string },
+  ): Promise<UploadAcknowledgement> => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('source_provider', fromMobile ? 'opennotes' : 'upload')
+    body.append('source_transport', fromMobile ? 'mobile' : 'upload')
+    body.append('recorded_at', metadata?.recordedAt ?? new Date().toISOString())
+    if (metadata?.context) body.append('context', metadata.context)
+    if (metadata?.recordingType) body.append('recording_type', metadata.recordingType)
+    if (fromMobile) {
+      const res = await fetchJSON<ApiEnvelope<UploadAcknowledgement>>('/mobile/recordings', { method: 'POST', body })
+      return res.data
+    }
+    const res = await fetchJSON<ApiEnvelope<Array<{ recording: { id: string }; added: boolean }>>>('/recordings/import', { method: 'POST', body })
+    const imported = res.data[0]
+    if (!imported) throw new Error('The vault did not acknowledge the recording.')
+    return { recordingId: imported.recording.id, added: imported.added }
+  },
+
+  updateRecording: async (id: string, patch: Partial<Pick<Recording, 'title' | 'recordedAt' | 'recordingType' | 'context' | 'notes' | 'tags'>> & { revision: number }): Promise<Recording> => {
+    const res = await fetchJSON<ApiEnvelope<RawRecording>>(`/recordings/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
+    return mapRecording(res.data)
+  },
+
+  updateTranscript: async (id: string, fullText: string): Promise<void> => {
+    await fetchJSON(`/recordings/${id}/transcript`, { method: 'PATCH', body: JSON.stringify({ fullText }) })
+  },
+
+  getTranscriptVersions: async (id: string): Promise<TranscriptVersion[]> => {
+    const res = await fetchJSON<ApiEnvelope<TranscriptVersion[]>>(`/recordings/${id}/transcript/versions`)
+    return res.data
+  },
+
+  replaceAudio: async (id: string, file: File, revision: number): Promise<void> => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('revision', String(revision))
+    const res = await fetch(apiUrl(`/recordings/${id}/replace-audio`), {
+      method: 'POST',
+      body,
+      headers: authenticatedHeaders(),
+    })
+    const payload = await res.json().catch(() => null) as { error?: string } | null
+    if (!res.ok) throw new Error(payload?.error || `API error: ${res.status}`)
+  },
+
+  trashRecording: async (id: string): Promise<void> => {
+    await fetchJSON(`/recordings/${id}`, { method: 'DELETE' })
+  },
+
+  restoreRecording: async (id: string): Promise<void> => {
+    await fetchJSON(`/recordings/${id}/restore`, { method: 'POST' })
+  },
+
+  purgeRecording: async (id: string): Promise<void> => {
+    await fetchJSON(`/recordings/${id}?permanent=true&confirm=true`, { method: 'DELETE' })
+  },
+
+  forwardRecording: async (id: string): Promise<string> => {
+    const res = await fetchJSON<ApiEnvelope<{ runId: string }>>(`/recordings/${id}/forward`, { method: 'POST' })
+    return res.data.runId
+  },
+
+  getAudioBlob: async (id: string): Promise<Blob> => {
+    const res = await fetch(apiUrl(`/recordings/${id}/audio`), { headers: authenticatedHeaders() })
+    if (!res.ok) throw new Error(`Could not load audio: ${res.status}`)
+    return res.blob()
+  },
+
+  getAudioObjectUrl: async (id: string): Promise<string> => {
+    return URL.createObjectURL(await api.getAudioBlob(id))
+  },
 }
+
+function parseTags(value: RawRecording['tags']): string[] {
+  if (Array.isArray(value)) return value.filter(tag => typeof tag === 'string')
+  if (typeof value !== 'string') return []
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter(tag => typeof tag === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function parseRecordingTypes(value: RawSettings[string]): string[] {
+  const defaults = ['class', 'meeting', 'conversation', 'other']
+  if (typeof value !== 'string') return defaults
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed)
+      ? parsed.filter(item => defaults.includes(item))
+      : defaults
+  } catch {
+    return defaults
+  }
+}
+import { apiUrl, authenticatedHeaders } from '@/lib/runtime'

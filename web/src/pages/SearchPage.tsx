@@ -57,9 +57,9 @@ export function SearchPage() {
   }
 
   return (
-    <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 md:p-8 max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Search</h1>
+        <h1 className="font-serif text-3xl font-medium md:text-4xl">Search</h1>
         <p className="text-sm text-muted-foreground mt-1">Search across all your transcripts</p>
       </div>
 

@@ -4,14 +4,15 @@
  * Files stay on disk; we just track them in SQLite.
  */
 
-import { watch, existsSync, readdirSync, statSync } from 'fs';
-import { join, basename, extname } from 'path';
+import { watch, existsSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { join, extname } from 'path';
 import { db } from '../db/client';
 import { recordings, userSettings } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import { jobQueue } from '../jobs/queue';
+import { importRecordingFile, inferRecordingType } from '../library/recording-library';
+import { queueRecordingProcessing } from '../library/processing';
 
-interface PlaudRecording {
+export interface PlaudRecording {
   filename: string;
   path: string;
   size: number;
@@ -57,7 +58,7 @@ export class FolderWatcher {
         if (existingTimer) clearTimeout(existingTimer);
         const timer = setTimeout(() => {
           this.debounceTimers.delete(fullPath);
-          void this.processFile(fullPath).catch(error => {
+          void this.processDetectedFile(fullPath).catch(error => {
             console.error(`[FolderWatcher] Failed to process ${filename}:`, error);
           });
         }, 1000);
@@ -104,13 +105,11 @@ export class FolderWatcher {
   }
 
   /** Process a single file — insert into DB if new, queue for transcription */
-  private async processFile(filePath: string, skipExistingCheck = false, autoTranscribe?: boolean): Promise<boolean> {
+  private async processFile(filePath: string, skipExistingCheck = false): Promise<boolean> {
     if (this.processedFiles.has(filePath) || this.pendingFiles.has(filePath)) return false;
     this.pendingFiles.add(filePath);
 
     try {
-      const filename = basename(filePath);
-
       if (!skipExistingCheck) {
         const existing = await db
           .select({ id: recordings.id })
@@ -124,61 +123,28 @@ export class FolderWatcher {
         }
       }
 
-      console.log(`[FolderWatcher] New recording: ${filename}`);
-
-      const metadata = this.parseFilename(filename);
-      const stats = statSync(filePath);
-      const recordedAt = metadata.recordedAt || stats.mtime;
-
-      const [recording] = await db.insert(recordings).values({
-        filePath,
-        originalFilename: filename,
-        fileSizeBytes: stats.size,
-        recordingType: metadata.type || 'other',
-        context: metadata.context || null,
-        status: 'pending',
-        recordedAt: recordedAt.toISOString(),
-      }).returning();
+      const imported = await importRecordingFile({
+        sourcePath: filePath,
+        provenance: { sourceProvider: 'plaud', sourceTransport: 'folder' },
+      });
+      if (!imported.added) {
+        this.processedFiles.add(filePath);
+        return false;
+      }
+      const recording = imported.recording;
 
       this.processedFiles.add(filePath);
 
-      const shouldTranscribe = autoTranscribe ?? await this.isAutoTranscribeEnabled();
-      if (shouldTranscribe) {
-        await jobQueue.add('process-recording', {
-          recordingId: recording.id,
-          filePath,
-          recordingType: metadata.type,
-        });
-        console.log(`[FolderWatcher] Queued recording ${recording.id}`);
-      }
+      const route = await queueRecordingProcessing({
+        recordingId: recording.id,
+        filePath: recording.filePath,
+      });
+      console.log(`[FolderWatcher] Imported recording ${recording.id}; processing route: ${route}`);
+      if (await this.shouldDeleteSourceAfterImport()) unlinkSync(filePath);
       return true;
     } finally {
       this.pendingFiles.delete(filePath);
     }
-  }
-
-  /** Parse date/type/context from filename */
-  private parseFilename(filename: string): { recordedAt?: Date; type?: string; context?: string } {
-    const dateMatch = filename.match(/(\d{4}-\d{2}-\d{2})/);
-    const timeMatch = filename.match(/(\d{2}-\d{2}-\d{2})/);
-
-    let recordedAt: Date | undefined;
-    if (dateMatch) {
-      const timeStr = timeMatch ? timeMatch[1].replace(/-/g, ':') : '00:00:00';
-      const d = new Date(`${dateMatch[1]}T${timeStr}`);
-      if (!isNaN(d.getTime())) recordedAt = d;
-    }
-
-    const lower = filename.toLowerCase();
-    let type: string | undefined;
-    if (lower.includes('class') || lower.includes('lecture')) type = 'class';
-    else if (lower.includes('meeting') || lower.includes('call')) type = 'meeting';
-    else if (lower.includes('conversation') || lower.includes('chat')) type = 'conversation';
-
-    const contextMatch = filename.match(/(?:class|lecture|meeting)[-_]?([A-Z]{2,4}\s*\d{3})/i);
-    const context = contextMatch ? contextMatch[1].toUpperCase() : undefined;
-
-    return { recordedAt, type, context };
   }
 
   /** Sync all existing files in folder */
@@ -191,7 +157,6 @@ export class FolderWatcher {
 
     const existingRows = await db.select({ filePath: recordings.filePath }).from(recordings);
     const existingPaths = new Set(existingRows.map(recording => recording.filePath));
-    const autoTranscribe = await this.isAutoTranscribeEnabled();
 
     for (const rec of this.listRecordings()) {
       try {
@@ -200,7 +165,7 @@ export class FolderWatcher {
           this.processedFiles.add(rec.path);
           continue;
         }
-        if (await this.processFile(rec.path, true, autoTranscribe)) {
+        if (await this.processFile(rec.path, true)) {
           result.added++;
           existingPaths.add(rec.path);
         }
@@ -221,12 +186,29 @@ export class FolderWatcher {
     };
   }
 
-  private async isAutoTranscribeEnabled(): Promise<boolean> {
-    const [setting] = await db
-      .select({ value: userSettings.value })
-      .from(userSettings)
-      .where(eq(userSettings.key, 'autoTranscribe'))
-      .limit(1);
-    return setting?.value !== 'false';
+  private async processDetectedFile(filePath: string): Promise<void> {
+    const [setting] = await db.select({ value: userSettings.value }).from(userSettings)
+      .where(eq(userSettings.key, 'autoImport')).limit(1);
+    if (setting?.value !== 'true') return;
+    if (!await this.isRecordingTypeSelected(filePath)) return;
+    await this.processFile(filePath);
+  }
+
+  private async isRecordingTypeSelected(filePath: string): Promise<boolean> {
+    const [setting] = await db.select({ value: userSettings.value }).from(userSettings)
+      .where(eq(userSettings.key, 'plaudRecordingTypes')).limit(1);
+    if (!setting?.value) return true;
+    try {
+      const selected = JSON.parse(setting.value);
+      return Array.isArray(selected) && selected.includes(inferRecordingType(filePath));
+    } catch {
+      return true;
+    }
+  }
+
+  private async shouldDeleteSourceAfterImport(): Promise<boolean> {
+    const [setting] = await db.select({ value: userSettings.value }).from(userSettings)
+      .where(eq(userSettings.key, 'deleteSourceAfterImport')).limit(1);
+    return setting?.value === 'true';
   }
 }

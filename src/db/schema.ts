@@ -27,6 +27,20 @@ export const recordings = sqliteTable('recordings', {
   // Error tracking
   errorMessage: text('error_message'),
   retryCount: integer('retry_count').default(0).notNull(),
+
+  // Cross-app identity and retention ownership.
+  sourceProvider: text('source_provider'),
+  sourceRecordingId: text('source_recording_id'),
+  sourceTransport: text('source_transport'),
+  fingerprint: text('fingerprint'),
+  retentionState: text('retention_state').default('active').notNull(),
+  deletedAt: text('deleted_at'),
+  revision: integer('revision').default(1).notNull(),
+  notes: text('notes'),
+  tags: text('tags', { mode: 'json' }).$type<string[]>(),
+  forwardingStatus: text('forwarding_status').default('not_configured').notNull(),
+  forwardingRunId: text('forwarding_run_id'),
+  forwardingError: text('forwarding_error'),
 });
 
 // ============================================
@@ -46,6 +60,15 @@ export const transcripts = sqliteTable('transcripts', {
   summary: text('summary', { mode: 'json' }), // {overview, keyPoints, participants, topics}
   extractedTasks: text('extracted_tasks', { mode: 'json' }), // Array of tasks
   analyzedAt: text('analyzed_at'),
+  createdAt: text('created_at').default(sql`(datetime('now'))`).notNull(),
+});
+
+export const transcriptVersions = sqliteTable('transcript_versions', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  recordingId: text('recording_id').references(() => recordings.id, { onDelete: 'cascade' }).notNull(),
+  fullText: text('full_text').notNull(),
+  segments: text('segments', { mode: 'json' }),
+  origin: text('origin').notNull(), // generated or edited
   createdAt: text('created_at').default(sql`(datetime('now'))`).notNull(),
 });
 

@@ -5,7 +5,7 @@ Self-hosted transcription and recording management for [Plaud](https://plaud.ai)
 ## Features
 
 - 🎙️ **Auto-sync** — watches your PlaudSync folder for new recordings
-- 📝 **Multi-engine transcription** — Whisper (local/free), Groq (fast), Deepgram (diarization)
+- 📝 **Multi-engine transcription** — Whisper (local/free), Mistral Voxtral (fast), Deepgram (diarization)
 - 🔍 **Indexed full-text search** across all transcripts
 - 🎵 **Range-streamed audio playback** with visual waveform and segment navigation
 - 🏷️ **Speaker diarization** (Deepgram engine)
@@ -32,7 +32,7 @@ git clone https://github.com/RemiPelloux/OpenPlod.git
 cd OpenPlod
 
 # Optional: set API keys in .env
-echo "GROQ_API_KEY=gsk_..." > .env
+echo "MISTRAL_API_KEY=..." > .env
 echo "DEEPGRAM_API_KEY=..." >> .env
 
 docker compose up --build
@@ -52,6 +52,19 @@ bun run device:scan
 
 This performs a read-only connection probe. It does not download, modify, or delete recordings.
 
+### Pair OpenNotes mobile
+
+OpenPlod can receive durable copies from OpenNotes before the mobile app clears its local cache.
+Set a private token and listen on your local network:
+
+```bash
+OPENPLOD_PAIRING_TOKEN="use-a-long-random-value" HOST=0.0.0.0 bun run start
+```
+
+Enter `http://<your-computer-ip>:3487` and the same token in OpenNotes settings. Keep this endpoint
+on a trusted local network; the pairing token protects mobile uploads but does not make the full
+OpenPlod web interface safe for public internet exposure.
+
 ## Manual Setup
 
 Requires [Bun](https://bun.sh) and optionally [whisper-cpp](https://github.com/ggerganov/whisper.cpp).
@@ -68,7 +81,7 @@ bun run build
 export PLAUD_SYNC_PATH=~/Documents/PlaudSync
 
 # Optional API keys
-export GROQ_API_KEY=gsk_...
+export MISTRAL_API_KEY=...
 export DEEPGRAM_API_KEY=...
 
 # Start
@@ -85,7 +98,7 @@ bun run dev
 bun run dev:web
 ```
 
-Frontend dev server runs on `:5173` and proxies `/api` to the backend on `:3456`.
+Frontend dev server runs on `:5173` and proxies `/api` to the backend on `:3487`.
 
 Run the quality checks with:
 
@@ -100,16 +113,16 @@ cd web && bun run lint && bun run build
 | Engine | Speed | Cost | Diarization | Setup |
 |--------|-------|------|-------------|-------|
 | **Whisper** (local) | ~1x realtime | Free | No | `brew install whisper-cpp` |
-| **Groq** | ~50x realtime | Free tier available | No | API key |
+| **Mistral Voxtral** | Fast cloud processing | Pay-per-use | No | API key |
 | **Deepgram** | ~10x realtime | Pay-per-use | Yes | API key |
 
-The app automatically falls back through the engine chain: Whisper → Groq → Deepgram.
+The app automatically falls back through the engine chain: Whisper → Mistral → Deepgram.
 
 ## Tech Stack
 
 - **Backend:** Bun + Hono + Drizzle ORM + SQLite
 - **Frontend:** React + Tailwind CSS + Radix UI
-- **Transcription:** whisper.cpp, Groq API, Deepgram API
+- **Transcription:** whisper.cpp, Mistral Voxtral API, Deepgram API
 
 ## Security
 

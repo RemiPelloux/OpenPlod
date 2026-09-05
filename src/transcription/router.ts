@@ -2,15 +2,15 @@
  * Transcription Router
  * 
  * Picks engine based on user config, handles fallback chains.
- * Default chain: whisper.cpp → groq → deepgram
+ * Default chain: whisper.cpp -> Mistral -> Deepgram
  */
 
 import type { TranscriptionEngine, TranscriptionResult, TranscriptionOptions } from './types.js';
 import { WhisperEngine } from './whisper.js';
-import { GroqWhisperEngine } from './groq.js';
+import { MistralEngine } from './mistral.js';
 import { DeepgramEngine } from './deepgram.js';
 
-export type EngineName = 'whisper' | 'groq' | 'deepgram';
+export type EngineName = 'whisper' | 'mistral' | 'deepgram';
 
 export interface RouterConfig {
   /** Preferred engine */
@@ -22,13 +22,13 @@ export interface RouterConfig {
 }
 
 export interface ProviderCredentials {
-  groqApiKey?: string;
+  mistralApiKey?: string;
   deepgramApiKey?: string;
 }
 
 const DEFAULT_CONFIG: RouterConfig = {
   primary: 'whisper',
-  fallback: ['groq', 'deepgram'],
+  fallback: ['mistral', 'deepgram'],
   defaults: {
     diarize: true,
     language: 'en',
@@ -44,7 +44,7 @@ export class TranscriptionRouter {
 
     this.engines = new Map<EngineName, TranscriptionEngine>([
       ['whisper', new WhisperEngine()],
-      ['groq', new GroqWhisperEngine(credentials.groqApiKey)],
+      ['mistral', new MistralEngine(credentials.mistralApiKey)],
       ['deepgram', new DeepgramEngine(credentials.deepgramApiKey)],
     ]);
   }

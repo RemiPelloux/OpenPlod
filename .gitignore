@@ -3,6 +3,8 @@ web/node_modules/
 web/dist/
 data/
 dist/
+src-tauri/target/
+src-tauri/binaries/
 *.db
 *.db-shm
 *.db-wal

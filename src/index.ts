@@ -17,6 +17,10 @@ import { recordings, transcripts, userSettings } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { searchTranscripts } from './search/transcripts';
 import { homedir } from 'os';
+import plaudApi from './api/plaud';
+import mobileApi from './api/mobile';
+import { purgeExpiredTrash, saveTranscriptVersion } from './library/recording-library';
+import { forwardRecordingWithRetry } from './library/forwarding';
 
 // ============================================
 // Create tables on startup
@@ -46,16 +50,22 @@ jobQueue.register('process-recording', async (data: any) => {
 
   const savedSettings = await db.select().from(userSettings);
   const settings = Object.fromEntries(savedSettings.map(setting => [setting.key, setting.value]));
-  const primary = ['whisper', 'groq', 'deepgram'].includes(settings.transcriptionEngine)
+  const primary = ['whisper', 'mistral', 'deepgram'].includes(settings.transcriptionEngine)
     ? settings.transcriptionEngine as EngineName
     : 'whisper';
   const router = new TranscriptionRouter(
-    { primary, fallback: ['whisper', 'groq', 'deepgram'].filter(name => name !== primary) as EngineName[] },
-    { groqApiKey: settings.groqApiKey, deepgramApiKey: settings.deepgramApiKey },
+    { primary, fallback: ['whisper', 'mistral', 'deepgram'].filter(name => name !== primary) as EngineName[] },
+    { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey },
   );
   const result = await router.transcribeFile(filePath);
 
   if (result.success) {
+    await saveTranscriptVersion({
+      recordingId,
+      fullText: result.fullText,
+      segments: result.segments,
+      origin: 'generated',
+    });
     // Store transcript
     await db.insert(transcripts).values({
       recordingId,
@@ -105,6 +115,10 @@ jobQueue.register('process-recording', async (data: any) => {
   }
 });
 
+jobQueue.register('forward-recording', async (data: { recordingId: string }) => {
+  await forwardRecordingWithRetry(data.recordingId);
+});
+
 // ============================================
 // Create Hono app
 // ============================================
@@ -116,13 +130,25 @@ app.use('*', cors({
     if (!origin) return '';
     try {
       const url = new URL(origin);
-      return ['localhost', '127.0.0.1', '::1'].includes(url.hostname) ? origin : '';
+      const isLocalDevelopment = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+      const isTauriOrigin = origin === 'tauri://localhost' || url.hostname === 'tauri.localhost';
+      return isLocalDevelopment || isTauriOrigin ? origin : '';
     } catch {
       return '';
     }
   },
+  allowHeaders: ['Content-Type', 'Range', 'X-OpenPlod-Token'],
+  exposeHeaders: ['Accept-Ranges', 'Content-Length', 'Content-Range'],
 }));
 app.use('*', logger());
+app.use('/api/*', async (c, next) => {
+  const pairingToken = process.env.OPENPLOD_PAIRING_TOKEN;
+  if (!pairingToken) return next();
+  if (c.req.header('X-OpenPlod-Token') !== pairingToken) {
+    return c.json({ success: false, error: 'This device is not paired with OpenPlod.' }, 401);
+  }
+  return next();
+});
 
 // Health/info
 app.get('/health', (c) => c.json({ status: 'ok', jobs: jobQueue.getStats() }));
@@ -135,6 +161,8 @@ app.get('/api/info', (c) => c.json({
 
 // API routes
 app.route('/api/recordings', recordingsApi);
+app.route('/api/plaud', plaudApi);
+app.route('/api/mobile', mobileApi);
 
 // Settings
 app.get('/api/settings', async (c) => {
@@ -147,7 +175,14 @@ app.get('/api/settings', async (c) => {
       syncFolderPath: values.syncFolderPath || '~/Documents/PlaudSync',
       autoTranscribe: values.autoTranscribe ?? 'true',
       autoSummarize: values.autoSummarize ?? 'false',
-      groqApiKeyConfigured: Boolean(values.groqApiKey),
+      autoImport: values.autoImport ?? 'false',
+      plaudRecordingTypes: values.plaudRecordingTypes ?? '["class","meeting","conversation","other"]',
+      deleteSourceAfterImport: values.deleteSourceAfterImport ?? 'false',
+      openWhistleForwarding: values.openWhistleForwarding ?? 'false',
+      openWhistleBaseUrl: values.openWhistleBaseUrl ?? '',
+      openWhistleAgentId: values.openWhistleAgentId ?? '',
+      openWhistleApiKeyConfigured: Boolean(values.openWhistleApiKey),
+      mistralApiKeyConfigured: Boolean(values.mistralApiKey),
       deepgramApiKeyConfigured: Boolean(values.deepgramApiKey),
     },
   });
@@ -157,11 +192,18 @@ app.put('/api/settings/:key', async (c) => {
   const key = c.req.param('key');
   const allowedKeys = new Set([
     'transcriptionEngine',
-    'groqApiKey',
+    'mistralApiKey',
     'deepgramApiKey',
     'syncFolderPath',
     'autoTranscribe',
     'autoSummarize',
+    'autoImport',
+    'plaudRecordingTypes',
+    'deleteSourceAfterImport',
+    'openWhistleForwarding',
+    'openWhistleBaseUrl',
+    'openWhistleApiKey',
+    'openWhistleAgentId',
   ]);
   if (!allowedKeys.has(key)) return c.json({ success: false, error: 'Unknown setting' }, 400);
   const { value } = await c.req.json();
@@ -206,13 +248,20 @@ async function startFolderSync() {
   if (!watcher.isConfigured()) return;
 
   watcher.startWatching();
+  if (settings.autoImport !== 'true') {
+    console.log('[Startup] Plaud folder detection ready; auto-import is disabled');
+    return;
+  }
   const result = await watcher.syncAll();
   console.log(`[Startup] Folder sync: ${result.added} added, ${result.skipped} skipped`);
 }
 
 void startFolderSync().catch(error => console.error('[Startup] Folder sync failed:', error));
+void purgeExpiredTrash().then(count => {
+  if (count > 0) console.log(`[Retention] Purged ${count} expired recording(s)`);
+}).catch(error => console.error('[Retention] Trash purge failed:', error));
 
-const port = parseInt(process.env.PORT || '3456', 10);
+const port = parseInt(process.env.PORT || '3487', 10);
 const hostname = process.env.HOST || '127.0.0.1';
 console.log(`[PlaudApp] Starting on http://${hostname}:${port}`);
 

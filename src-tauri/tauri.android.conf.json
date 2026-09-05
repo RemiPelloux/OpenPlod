@@ -1,0 +1,10 @@
+{
+  "build": {
+    "beforeDevCommand": "bun run dev:web",
+    "beforeBuildCommand": "bun run build"
+  },
+  "bundle": {
+    "externalBin": [],
+    "resources": []
+  }
+}

@@ -8,7 +8,8 @@ services:
       - ~/Documents/PlaudSync:/plaud
     environment:
       - HOST=0.0.0.0
-      - GROQ_API_KEY=${GROQ_API_KEY}
+      - PORT=3456
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
       - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     restart: unless-stopped
