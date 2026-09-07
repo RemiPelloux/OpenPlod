@@ -13,6 +13,7 @@ src-tauri/binaries/
 !.env.example
 plaud-developer.json
 plaud-device.json
+openplod-destinations.json
 pairing-token
 *.pem
 *.key

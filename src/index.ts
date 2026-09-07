@@ -12,7 +12,10 @@ import recordingsApi from './api/recordings';
 import { FolderWatcher } from './sync/folder-watcher';
 import { jobQueue } from './jobs/queue';
 import { TranscriptionRouter, type EngineName } from './transcription/router';
-import { db } from './db/client';
+import { db, sqlite } from './db/client';
+import { OrganizerStore } from './organizer/store';
+import { createOrganizerApi } from './api/organizer';
+import { apiAccess } from './api/access';
 import { recordings, transcripts, userSettings } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { searchTranscripts } from './search/transcripts';
@@ -123,14 +126,7 @@ app.use('*', cors({
   exposeHeaders: ['Accept-Ranges', 'Content-Length', 'Content-Range'],
 }));
 app.use('*', logger());
-app.use('/api/*', async (c, next) => {
-  const pairingToken = process.env.OPENPLOD_PAIRING_TOKEN;
-  if (!pairingToken) return next();
-  if (c.req.header('X-OpenPlod-Token') !== pairingToken) {
-    return c.json({ success: false, error: 'This device is not paired with OpenPlod.' }, 401);
-  }
-  return next();
-});
+app.use('/api/*', apiAccess);
 
 // Health/info
 app.get('/health', (c) => c.json({ status: 'ok', jobs: jobQueue.getStats() }));
@@ -146,6 +142,9 @@ app.route('/api/recordings', recordingsApi);
 app.route('/api/plaud', plaudApi);
 app.route('/api/mobile', mobileApi);
 app.route('/api/transcripts', transcriptsApi);
+const organizer = new OrganizerStore(sqlite);
+organizer.purgeExpired();
+app.route('/api/v1', createOrganizerApi(organizer));
 
 // Settings
 app.get('/api/settings', async (c) => {

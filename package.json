@@ -1,6 +1,6 @@
 {
   "name": "plaud-app",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "bun run src/index.ts",
@@ -14,6 +14,7 @@
     "tauri:android:init": "tauri android init",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "mcp": "bun run src/mcp/index.ts",
     "check:android": "bun run scripts/check-android-alignment.ts",
     "start": "NODE_ENV=production bun run src/index.ts",
     "docker": "docker compose up --build",
@@ -24,9 +25,11 @@
   "dependencies": {
     "@deepgram/sdk": "^3.9.0",
     "@hono/node-server": "^1.13.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@noble/ciphers": "^2.4.0",
     "drizzle-orm": "^0.38.0",
-    "hono": "^4.7.0"
+    "hono": "^4.7.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",

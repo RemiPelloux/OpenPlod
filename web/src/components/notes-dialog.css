@@ -1,0 +1,23 @@
+.note-dialog-overlay { position: fixed; inset: 0; z-index: 80; background: rgb(0 0 0 / 55%); }
+.note-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 81; width: min(540px, calc(100% - 24px)); max-height: calc(100dvh - 40px); overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--popover); padding: 24px; box-shadow: var(--shadow); }
+.note-dialog > header { display: flex; gap: 16px; justify-content: space-between; align-items: start; margin-bottom: 24px; }
+.note-dialog h2 { font-size: 20px; font-weight: 600; }
+.note-dialog header p { font-size: 13px; color: var(--muted-foreground); margin-top: 6px; overflow-wrap: anywhere; }
+.note-dialog label { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; font-size: 13px; font-weight: 500; }
+.note-dialog input, .note-dialog select { width: 100%; min-width: 0; border: 1px solid var(--input); border-radius: 5px; background: var(--background); padding: 10px 12px; font: inherit; }
+.note-dialog textarea { width: 100%; resize: vertical; min-height: 80px; border: 1px solid var(--input); border-radius: 5px; background: var(--background); padding: 10px 12px; font: inherit; }
+.note-ai-disclosure, .note-ai-trace { color: var(--muted-foreground); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.note-ai-progress { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 16px 0; }
+.note-ai-progress svg { width: 16px; height: 16px; flex-shrink: 0; }
+.note-ai-preview { margin: 16px 0; padding: 16px 0; border-block: 1px solid var(--border); max-height: 40dvh; overflow: auto; overflow-wrap: anywhere; }
+.note-ai-preview h1 { font-size: 24px; }
+.note-ai-preview h2 { font-size: 19px; }
+.note-ai-trace ol { padding-left: 20px; }
+.note-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; flex-wrap: wrap; }
+.note-error { color: var(--destructive); font-size: 13px; overflow-wrap: anywhere; }
+.note-send-warning { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.note-send-local { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.note-delivery-history { margin-top: 24px; font-size: 12px; }
+.note-delivery-history h3 { margin-bottom: 8px; font-size: 13px; font-weight: 600; }
+.note-delivery-history > div { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; border-top: 1px solid var(--border); padding: 10px 0; }
+.note-delivery-history small { grid-column: 1 / -1; color: var(--muted-foreground); }

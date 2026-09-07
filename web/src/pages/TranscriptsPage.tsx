@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Bluetooth, FileText, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { SaveTranscriptDialog } from '@/components/NoteDialogs'
 import { api, type TranscriptDocument } from '@/lib/api'
 import { formatDuration, formatRelativeDate } from '@/lib/utils'
 import './transcripts.css'
@@ -53,13 +54,13 @@ export function TranscriptsPage() {
     </div>
     {error && <div className="transcripts-error" role="alert"><p>{error}</p><Button variant="outline" size="sm" onClick={() => setRefreshKey(key => key + 1)}>Retry</Button></div>}
     <div className="transcript-documents">
-      {documents.map(document => <Link key={document.recordingId} to={`/transcripts/${document.recordingId}`} className="transcript-document">
+      {documents.map(document => <div key={document.recordingId} className="transcript-document-row"><Link to={`/transcripts/${document.recordingId}`} className="transcript-document">
         <FileText aria-hidden="true" />
         <div><h2>{document.filename?.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ') || 'Untitled transcript'}</h2>
           <p className="transcript-excerpt">{document.excerpt || 'Empty transcript'}</p>
           <div className="transcript-document-meta"><span>{formatRelativeDate(document.recordedAt)}</span><span>{document.sourceProvider === 'plaud' ? 'Plaud Note Pro' : document.sourceProvider === 'opennotes' ? 'Phone' : 'Imported audio'}</span><span>{document.wordCount ?? 0} words</span>{!!document.durationSeconds && <span>{formatDuration(document.durationSeconds)}</span>}</div>
         </div><ArrowRight aria-hidden="true" />
-      </Link>)}
+      </Link><div className="transcript-document-actions"><SaveTranscriptDialog recordingId={document.recordingId} versionId={null} title={document.filename?.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ') || 'Untitled transcript'} /></div></div>)}
     </div>
     {loading && <div className="transcripts-loading" role="status" aria-label="Loading transcripts"><Loader2 className="animate-spin" /></div>}
     {!loading && !error && documents.length === 0 && <section className="transcripts-empty"><FileText /><h2>No transcripts yet</h2><div><Button asChild><Link to="/">Recordings</Link></Button><Button asChild variant="outline"><Link to="/devices">Connect Plaud</Link></Button></div></section>}

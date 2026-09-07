@@ -1,6 +1,6 @@
 [package]
 name = "openplod"
-version = "0.2.0"
+version = "0.3.0"
 description = "Private Plaud recording vault for desktop and mobile"
 authors = ["OpenPlod contributors"]
 license = "MIT"

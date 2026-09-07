@@ -1,23 +1,23 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Bluetooth, FileText, FolderHeart, Loader2, Mic, Moon, Settings, Sun, Upload } from 'lucide-react'
+import { Bluetooth, ChevronRight, FileText, FolderHeart, HardDrive, Loader2, Mic, Moon, NotebookPen, Settings, Sun, Upload } from 'lucide-react'
 import { Brand } from '@/components/Brand'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api } from '@/lib/api'
 import { getRuntime } from '@/lib/runtime'
 import { useTheme } from '@/hooks/useTheme'
 
 const nav = [
-  { to: '/', icon: FolderHeart, label: 'Library' },
+  { to: '/', icon: FolderHeart, label: 'Recordings' },
   { to: '/transcripts', icon: FileText, label: 'Transcripts' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 const desktopNav = [
   nav[0],
-  { to: '/devices', icon: Bluetooth, label: 'Plaud' },
-  { to: '/record', icon: Mic, label: 'Record' },
-  ...nav.slice(1),
+  nav[1],
+  { to: '/notes', icon: NotebookPen, label: 'Documents' },
 ]
 
 export function Layout() {
@@ -63,18 +63,23 @@ export function Layout() {
   }
 
   return (
-    <div className="app-shell">
+    <TooltipProvider><div className="app-shell">
       <aside className="desktop-sidebar">
         <div className="sidebar-brand"><Brand /></div>
         <nav className="sidebar-nav" aria-label="Main navigation">
+          <Button className="sidebar-capture" size="sm" onClick={() => navigate('/record')}><Mic data-icon="inline-start" />New recording</Button>
+          <p className="sidebar-section-label">Workspace</p>
           {desktopNav.map(({ to, icon: Icon, label }) => (
             <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <Icon aria-hidden="true" />
               <span>{label}</span>
             </NavLink>
           ))}
+          <p className="sidebar-section-label">Connections</p>
+          <NavLink to="/devices" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Bluetooth /><span>Plaud device</span></NavLink>
         </nav>
         <div className="sidebar-actions">
+          <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Settings /><span>Settings</span></NavLink>
           <Button variant="ghost" size="sm" className="w-full justify-start gap-3" onClick={() => uploadRef.current?.click()} disabled={uploading}>
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             Import audio
@@ -83,11 +88,15 @@ export function Layout() {
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             {dark ? 'Light mode' : 'Dark mode'}
           </Button>
-          <div className="vault-state"><span />{runtime.mode === 'desktop' ? 'Vault on this Mac' : 'Desktop vault paired'}</div>
+          <div className="vault-state"><HardDrive />{runtime.mode === 'desktop' ? 'Local recording vault' : 'OpenPlod workspace'}</div>
         </div>
       </aside>
 
       <div className="app-content">
+        {!captureMode && <header className="workspace-bar">
+          <div className="workspace-breadcrumb"><span>Workspace</span><ChevronRight /><strong>{location.pathname.startsWith('/recording/') ? 'Recording' : [...desktopNav, nav[2], { to: '/devices', label: 'Plaud device' }].find(item => item.to === location.pathname)?.label || 'OpenPlod'}</strong></div>
+          <div className="workspace-bar-actions"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="size-8" onClick={() => uploadRef.current?.click()} disabled={uploading} aria-label="Import audio">{uploading ? <Loader2 className="animate-spin" /> : <Upload />}</Button></TooltipTrigger><TooltipContent>Import audio</TooltipContent></Tooltip></div>
+        </header>}
         {!captureMode && <header className="mobile-header">
           <Brand />
           <div className="flex items-center gap-1">
@@ -108,7 +117,7 @@ export function Layout() {
           if (file) void handleUpload(file)
         }} />
         {!captureMode && <nav className="mobile-nav" aria-label="Main navigation">
-          {nav.slice(0, 2).map(({ to, icon: Icon, label }) => (
+          {[nav[0], { to: '/notes', icon: NotebookPen, label: 'Documents' }].map(({ to, icon: Icon, label }) => (
             <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`}>
               <Icon aria-hidden="true" /><span>{label}</span>
             </NavLink>
@@ -124,6 +133,6 @@ export function Layout() {
           </NavLink>
         </nav>}
       </div>
-    </div>
+    </div></TooltipProvider>
   )
 }

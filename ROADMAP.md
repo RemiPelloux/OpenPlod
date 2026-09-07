@@ -1,6 +1,16 @@
 # OpenPlod Roadmap
 
-Updated September 5, 2026 for the 0.2.0 source publication. Desktop remains the primary audio owner; Android is an experimental companion. A build or simulated response is not a hardware acceptance result.
+Updated September 7, 2026 for the 0.3.0 experimental release. Desktop remains the primary audio owner; Android is an experimental companion. A build or simulated response is not a hardware acceptance result.
+
+## Delivered in 0.3.0
+
+- Markdown organizer, Mistral-generated documents with review-before-save, authenticated REST API, and opt-in-write MCP server.
+- Compact shared desktop/mobile workspace with shadcn/Radix controls, real audio timeline, sorting, and neutral light/dark themes.
+- Original vector branding, release documentation, contribution/security templates, and continuous integration.
+- 76 passing source tests plus real-vault browser checks from 320 to 1440 px, including playback and keyboard seeking.
+- Redesigned Android development update installed in place and launched on a Samsung phone; six ARM64 libraries pass 16 KB alignment checks.
+
+The public release excludes the SDK-containing Android APK because upstream explicitly reserves separate proprietary binary terms. Fresh-install authorization and complete physical-phone workflows remain open gates.
 
 ## Delivered in 0.2.0
 
@@ -13,6 +23,12 @@ Updated September 5, 2026 for the 0.2.0 source publication. Desktop remains the 
 - Updated Mac and Android 0.2.0 builds. Mobile's shared import dialog uses the paired Mac's Bluetooth adapter.
 
 Validation: 50 Bun tests; TypeScript and frontend lint/build; macOS and Android builds; APK ZIP and ARM64 library 16 KB alignment; responsive browser-fixture checks at three viewport sizes. Existing native document export and synthetic-speech Mistral checks passed earlier in development. Final installed-phone touch-flow acceptance is incomplete.
+
+## Notes and Automation
+
+The current source also includes a Markdown organizer, versioned note/folder API, and optional stdio MCP server. Folder CRUD, note snapshots/history/Trash, idempotent delivery, and read-only MCP defaults have automated coverage. Browser acceptance uses an isolated test vault; configured real third-party delivery remains a separate integration check. See [API](docs/api.md) and [MCP](docs/mcp.md) documentation.
+
+Mistral document generation has live acceptance against a real Plaud transcript: structured Markdown, review before saving, source preservation, provider provenance, and a persisted processing trace. The shared Android redesign update is installed and starts successfully; complete on-phone Mistral workflow validation remains open.
 
 ## Next: Reproducible Desktop Authorization
 

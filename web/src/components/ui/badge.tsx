@@ -2,7 +2,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const badgeVariants = cva(
-  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors',
+  'inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium',
   {
     variants: {
       variant: {
@@ -10,8 +10,8 @@ const badgeVariants = cva(
         secondary: 'border-transparent bg-secondary text-secondary-foreground',
         destructive: 'border-transparent bg-destructive text-destructive-foreground',
         outline: 'text-foreground',
-        success: 'border-transparent bg-emerald-500/15 text-emerald-500',
-        warning: 'border-transparent bg-amber-500/15 text-amber-500',
+        success: 'border-transparent bg-[color-mix(in_srgb,var(--positive)_10%,transparent)] text-[var(--positive)]',
+        warning: 'border-transparent bg-[color-mix(in_srgb,var(--neutral)_10%,transparent)] text-[var(--neutral)]',
       },
     },
     defaultVariants: { variant: 'default' },

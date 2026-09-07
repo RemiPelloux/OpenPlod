@@ -1,0 +1,49 @@
+name: Bug report
+description: Report a reproducible OpenPlod problem
+title: '[Bug]: '
+body:
+  - type: markdown
+    attributes:
+      value: Never attach audio, transcripts, passwords, pairing QR codes, device identities, or proprietary APK/SDK files. Report security issues privately using SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: App version and install method
+      placeholder: 0.3.0, macOS ZIP or source build
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS, hardware, and device firmware
+      description: Include phone model and Plaud model if relevant. Omit device serials and identifiers.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: Evidence type
+      options:
+        - Real hardware
+        - Browser or desktop UI
+        - Automated test
+        - Not yet reproduced
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Remove private paths, credentials, device identifiers, and recording content.

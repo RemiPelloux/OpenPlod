@@ -1,9 +1,9 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { PlaudImportDialog } from '@/components/PlaudImportDialog'
 import { Link } from 'react-router-dom'
-import { Mic, AlertCircle, Search, LayoutGrid, List, Loader2, RefreshCw, Bluetooth, Download, Trash2, RotateCcw, SlidersHorizontal, X, FolderHeart, Check } from 'lucide-react'
+import { Mic, AlertCircle, Search, LayoutGrid, List, Loader2, RefreshCw, Bluetooth, Download, Trash2, RotateCcw, SlidersHorizontal, X, ArrowUpRight } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { Card, CardContent } from '@/components/ui/card'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +23,7 @@ export function Dashboard() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('list')
+  const [sort, setSort] = useState('newest')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [retention, setRetention] = useState<'active' | 'trash'>('active')
   const [available, setAvailable] = useState<AvailableRecording[]>([])
@@ -30,25 +31,28 @@ export function Dashboard() {
   const [scanning, setScanning] = useState(false)
   const [importing, setImporting] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const loadRevision = useRef(0)
+  const invalidateLoad = useCallback(() => { loadRevision.current++ }, [])
 
   const loadDashboard = useCallback(async () => {
+    const revision = ++loadRevision.current
     setLoading(true)
     setError('')
     try {
       const recs = await api.getRecordings({ retention, limit: '100' })
-      setRecordings(recs)
+      if (revision === loadRevision.current) setRecordings(recs)
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Could not load recordings')
+      if (revision === loadRevision.current) setError(loadError instanceof Error ? loadError.message : 'Could not load recordings')
     } finally {
-      setLoading(false)
+      if (revision === loadRevision.current) setLoading(false)
     }
   }, [retention])
 
   useEffect(() => {
     void loadDashboard()
     window.addEventListener('plaud:sync-complete', loadDashboard)
-    return () => window.removeEventListener('plaud:sync-complete', loadDashboard)
-  }, [loadDashboard])
+    return () => { invalidateLoad(); window.removeEventListener('plaud:sync-complete', loadDashboard) }
+  }, [loadDashboard, invalidateLoad])
 
   useEffect(() => {
     let disposed = false
@@ -66,7 +70,7 @@ export function Dashboard() {
     if (statusFilter !== 'all' && r.status !== statusFilter) return false
     if (deferredSearch && !r.title.toLocaleLowerCase().includes(deferredSearch.toLocaleLowerCase())) return false
     return true
-  }), [deferredSearch, recordings, statusFilter])
+  }).sort((a, b) => sort === 'title' ? a.title.localeCompare(b.title) : (sort === 'oldest' ? 1 : -1) * (new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())), [deferredSearch, recordings, statusFilter, sort])
 
   const unimported = available.filter(recording => !recording.imported)
 
@@ -101,14 +105,14 @@ export function Dashboard() {
   }
 
   const restore = async (id: string) => {
-    await api.restoreRecording(id)
-    await loadDashboard()
+    try { await api.restoreRecording(id); await loadDashboard() }
+    catch (error) { setError(error instanceof Error ? error.message : 'Restore failed') }
   }
 
   const purge = async (id: string) => {
     if (!window.confirm('Permanently delete this recording and its audio? This cannot be undone.')) return
-    await api.purgeRecording(id)
-    await loadDashboard()
+    try { await api.purgeRecording(id); await loadDashboard() }
+    catch (error) { setError(error instanceof Error ? error.message : 'Deletion failed') }
   }
 
   return (
@@ -117,28 +121,36 @@ export function Dashboard() {
         <div>
           <h1>Recordings</h1>
         </div>
-        <PlaudImportDialog />
+        <div className="library-heading-actions"><PlaudImportDialog /></div>
       </div>
 
+      <div className="library-controls">
+        <ToggleGroup type="single" value={retention} onValueChange={value => { if (value === 'active' || value === 'trash') setRetention(value) }} aria-label="Recording library">
+          <ToggleGroupItem value="active"><Mic />All recordings</ToggleGroupItem>
+          <ToggleGroupItem value="trash"><Trash2 />Trash</ToggleGroupItem>
+        </ToggleGroup>
+        <span className="library-results">{loading ? 'Loading' : `${filtered.length} shown`}</span>
+      </div>
       <div className="library-tools">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <div className="library-search">
+          <Search />
           <Input
             placeholder="Search recordings"
-            className="pl-10"
+            aria-label="Search recordings"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <Button variant="outline" size="icon" className="shrink-0" onClick={() => setFiltersOpen(true)} aria-label="Filter recordings" title="Filter recordings">
-          <SlidersHorizontal className="h-4 w-4" />
+        <Button variant={statusFilter === 'all' ? 'outline' : 'secondary'} size="icon" className="size-9 shrink-0" onClick={() => setFiltersOpen(true)} aria-label="Filter recordings" title="Filter recordings">
+          <SlidersHorizontal />
         </Button>
-        <Button variant="outline" size="icon" className="shrink-0 sm:hidden" onClick={() => setRetention(value => value === 'active' ? 'trash' : 'active')} aria-label={retention === 'active' ? 'Open Trash' : 'Return to Library'} title={retention === 'active' ? 'Open Trash' : 'Return to Library'}>
-          {retention === 'active' ? <Trash2 className="h-4 w-4" /> : <FolderHeart className="h-4 w-4" />}
-        </Button>
+        <select className="library-sort" aria-label="Sort recordings" value={sort} onChange={event => setSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="title">Title A-Z</option></select>
+        <ToggleGroup type="single" size="sm" variant="outline" className="library-layout-toggle" value={view} onValueChange={value => { if (value === 'list' || value === 'grid') setView(value) }} aria-label="Recording layout">
+          <ToggleGroupItem value="list" aria-label="List view" title="List view"><List /></ToggleGroupItem>
+          <ToggleGroupItem value="grid" aria-label="Grid view" title="Grid view"><LayoutGrid /></ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
-      {retention === 'active' && <Link to="/devices" className="device-connection"><span><strong>Plaud Note Pro</strong><p>Device recordings</p></span><Bluetooth aria-hidden="true" /></Link>}
       {retention === 'active' && available.length > 0 && (
         <section className="plaud-inbox" aria-labelledby="plaud-import-heading">
           <div className="plaud-inbox-content">
@@ -190,43 +202,23 @@ export function Dashboard() {
         </section>
       )}
 
-      <div className="hidden gap-3 sm:flex">
-        <div className="ml-auto flex gap-1 border rounded-lg p-1">
-          <Button variant={retention === 'active' ? 'secondary' : 'ghost'} size="sm" onClick={() => setRetention('active')}>
-            <Mic className="mr-2 h-4 w-4" /> Library
-          </Button>
-          <Button variant={retention === 'trash' ? 'secondary' : 'ghost'} size="sm" onClick={() => setRetention('trash')}>
-            <Trash2 className="mr-2 h-4 w-4" /> Trash
-          </Button>
-        </div>
-        <div className="flex gap-1 border rounded-lg p-1">
-          <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="icon" className="h-8 w-8" onClick={() => setView('list')} aria-label="List view" title="List view">
-            <List className="h-4 w-4" />
-          </Button>
-          <Button variant={view === 'grid' ? 'secondary' : 'ghost'} size="icon" className="h-8 w-8" onClick={() => setView('grid')} aria-label="Grid view" title="Grid view">
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
       <Dialog.Root open={filtersOpen} onOpenChange={setFiltersOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="mobile-filter-overlay" />
           <Dialog.Content className="mobile-filter-sheet" aria-describedby={undefined}>
             <div className="flex items-center justify-between">
-              <Dialog.Title className="font-serif text-2xl font-semibold">Filter recordings</Dialog.Title>
+              <Dialog.Title className="text-lg font-semibold">Filter recordings</Dialog.Title>
               <Dialog.Close asChild>
                 <Button variant="ghost" size="icon" aria-label="Close filters" title="Close filters"><X className="h-4 w-4" /></Button>
               </Dialog.Close>
             </div>
-            <div className="filter-options" role="radiogroup" aria-label="Recording status">
-              {['all', 'complete', 'pending', 'failed'].map(status => (
-                <button key={status} type="button" role="radio" aria-checked={statusFilter === status} onClick={() => setStatusFilter(status)}>
+            <ToggleGroup type="single" orientation="vertical" className="filter-options" value={statusFilter} onValueChange={value => { if (value) setStatusFilter(value) }} aria-label="Recording status">
+              {['all', 'complete', 'pending', 'transcribing', 'failed'].map(status => (
+                <ToggleGroupItem key={status} value={status}>
                   <span className="capitalize">{status}</span>
-                  {statusFilter === status && <Check className="h-4 w-4" />}
-                </button>
+                </ToggleGroupItem>
               ))}
-            </div>
+            </ToggleGroup>
             <Dialog.Close asChild><Button className="w-full">Show recordings</Button></Dialog.Close>
           </Dialog.Content>
         </Dialog.Portal>
@@ -247,72 +239,31 @@ export function Dashboard() {
           </Button>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-20 text-muted-foreground">
-          <Mic className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="text-lg font-medium">{retention === 'trash' ? 'Trash is empty' : 'No recordings yet'}</p>
-          <p className="text-sm">{retention === 'trash' ? 'Deleted recordings stay here for 30 days.' : 'Tap the microphone to record your first note.'}</p>
-        </div>
-      ) : view === 'list' ? (
-        <div className="recording-list">
-          {filtered.map(r => (
-            <Link key={r.id} to={`/recording/${r.id}`}>
-              <Card className="recording-row">
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="recording-source-icon">
-                    <Mic className="h-4 w-4 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{r.title}</p>
-                    <p className="text-xs text-muted-foreground">{formatRelativeDate(r.recordedAt)} · {formatDuration(r.duration)}</p>
-                  </div>
-                  <Badge className={`recording-status ${r.status === 'complete' ? 'recording-status-complete' : ''}`} variant={statusColors[r.status]}>{r.status}</Badge>
-                  {retention === 'trash' && (
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={event => { event.preventDefault(); event.stopPropagation(); void restore(r.id) }} aria-label="Restore recording" title="Restore recording">
-                        <RotateCcw className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={event => { event.preventDefault(); event.stopPropagation(); void purge(r.id) }} aria-label="Permanently delete recording" title="Permanently delete recording">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+        <div className="library-empty">
+          {retention === 'trash' ? <Trash2 /> : <Mic />}
+          <h2>{search || statusFilter !== 'all' ? 'No matching recordings' : retention === 'trash' ? 'Trash is empty' : 'No recordings yet'}</h2>
+          {search || statusFilter !== 'all' ? <Button variant="outline" onClick={() => { setSearch(''); setStatusFilter('all') }}>Clear filters</Button> : retention === 'active' ? <Button asChild><Link to="/record"><Mic />New recording</Link></Button> : <p className="text-sm text-muted-foreground">Deleted recordings remain recoverable for 30 days.</p>}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className={view === 'list' ? 'recording-list' : 'library-grid'}>
+          {view === 'list' && <div className="recording-table-head" data-trash={retention === 'trash'} aria-hidden="true"><span>Recording</span><span>Recorded</span><span>Duration</span><span>Transcript</span><span /></div>}
           {filtered.map(r => (
-            <Link key={r.id} to={`/recording/${r.id}`}>
-              <Card className="hover:bg-accent/50 transition-colors cursor-pointer h-full">
-                <CardContent className="p-5 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="recording-source-icon">
-                      <Mic className="h-4 w-4 text-primary" />
-                    </div>
-                    <Badge variant={statusColors[r.status]}>{r.status}</Badge>
-                  </div>
-                  <div>
-                    <p className="font-medium truncate">{r.title}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{formatRelativeDate(r.recordedAt)} · {formatDuration(r.duration)}</p>
-                  </div>
-                  {r.summary && (
-                    <p className="text-xs text-muted-foreground line-clamp-2">{r.summary}</p>
-                  )}
-                  {retention === 'trash' && (
-                    <div className="flex justify-end gap-1 border-t pt-2">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={event => { event.preventDefault(); event.stopPropagation(); void restore(r.id) }} aria-label="Restore recording" title="Restore recording">
-                        <RotateCcw className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={event => { event.preventDefault(); event.stopPropagation(); void purge(r.id) }} aria-label="Permanently delete recording" title="Permanently delete recording">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </Link>
+            <article key={r.id} className={view === 'list' ? 'recording-table-row' : 'recording-grid-item'} data-trash={retention === 'trash'}>
+              <Link to={`/recording/${r.id}`} className="recording-row-link">
+                <span className="recording-source-icon">{r.sourceProvider === 'plaud' ? <Bluetooth /> : <Mic />}</span>
+                <span className="recording-row-copy"><strong>{r.title}</strong><small>{r.sourceProvider === 'plaud' ? 'Plaud' : 'Audio recording'}</small></span>
+              </Link>
+              <span className="recording-date">{formatRelativeDate(r.recordedAt)}</span>
+              <span className="recording-duration">{formatDuration(r.duration)}</span>
+              <div className="recording-state"><Badge variant={statusColors[r.status]}>{r.status === 'complete' ? 'Ready' : r.status === 'pending' ? 'Not started' : r.status}</Badge></div>
+              {view === 'grid' && r.summary && <p className="recording-grid-summary">{r.summary}</p>}
+              <div className="recording-row-actions">
+                {retention === 'trash' ? <>
+                  <Button variant="ghost" size="icon" className="size-8" onClick={() => void restore(r.id)} aria-label={`Restore ${r.title}`} title="Restore recording"><RotateCcw /></Button>
+                  <Button variant="ghost" size="icon" className="size-8" onClick={() => void purge(r.id)} aria-label={`Permanently delete ${r.title}`} title="Permanently delete recording"><Trash2 /></Button>
+                </> : <Button asChild variant="ghost" size="icon" className="size-8"><Link to={`/recording/${r.id}`} aria-label={`Open ${r.title}`} title="Open recording"><ArrowUpRight /></Link></Button>}
+              </div>
+            </article>
           ))}
         </div>
       )}

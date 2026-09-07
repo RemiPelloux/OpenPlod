@@ -10,6 +10,7 @@ const DevicesPage = lazy(() => import('@/pages/DevicesPage').then(module => ({ d
 const Dashboard = lazy(() => import('@/pages/Dashboard').then(module => ({ default: module.Dashboard })))
 const RecordingDetail = lazy(() => import('@/pages/RecordingDetail').then(module => ({ default: module.RecordingDetail })))
 const TranscriptsPage = lazy(() => import('@/pages/TranscriptsPage').then(module => ({ default: module.TranscriptsPage })))
+const NotesPage = lazy(() => import('@/pages/NotesPage').then(module => ({ default: module.NotesPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(module => ({ default: module.SettingsPage })))
 const RecordingPage = lazy(() => import('@/pages/RecordingPage').then(module => ({ default: module.RecordingPage })))
 
@@ -34,6 +35,7 @@ export default function App() {
               <Route path="/recording/:id" element={<RecordingDetail />} />
               <Route path="/record" element={<RecordingPage />} />
               <Route path="/transcripts" element={<TranscriptsPage />} />
+              <Route path="/notes" element={<NotesPage />} />
               <Route path="/transcripts/:id" element={<RecordingDetail backPath="/transcripts" />} />
               <Route path="/search" element={<Navigate to="/transcripts" replace />} />
               <Route path="/settings" element={<SettingsPage />} />

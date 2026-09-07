@@ -1,4 +1,5 @@
 import { sqlite } from './client';
+import { initializeOrganizer } from '../organizer/store';
 
 const SCHEMA_VERSION = 3;
 
@@ -158,5 +159,6 @@ export function initializeDatabase() {
     })();
   }
 
+  sqlite.transaction(() => initializeOrganizer(sqlite))();
   sqlite.exec('PRAGMA optimize');
 }

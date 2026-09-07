@@ -29,15 +29,12 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { SaveTranscriptDialog } from '@/components/NoteDialogs'
 import { api, type Recording, type TranscriptSegment, type TranscriptVersion } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import { exportDocument, exportOriginalAudio, recordingMarkdown, safeDocumentName as safeName } from '@/lib/document-export'
 import { deviceCommand, supportsPlaudDevice, vaultArguments } from '@/lib/plaud-device'
-
-const waveformHeights = Array.from({ length: 128 }, (_, index) => {
-  const wave = Math.sin(index * 0.27) * 23 + Math.sin(index * 0.61) * 16
-  return Math.max(12, Math.min(94, 46 + wave))
-})
 
 type BusyAction = 'transcribing' | 'summarizing' | 'saving' | 'forwarding' | null
 type DocumentMode = 'preview' | 'edit' | 'timestamps'
@@ -135,7 +132,6 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
   const sourceLabel = recording?.sourceProvider === 'plaud'
     ? 'Plaud Note Pro'
     : recording?.sourceProvider === 'opennotes' ? 'OpenPlod mobile' : 'Local import'
-  const progress = currentTime / (duration || recording?.duration || 1)
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current
@@ -290,6 +286,7 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
           <p>{formatRecordingDate(recording.recordedAt)} <span /> {sourceLabel}</p>
         </div>
         <div className="recording-toolbar-actions">
+          <SaveTranscriptDialog recordingId={recording.id} versionId={selectedVersion?.id ?? recording.transcriptVersionId ?? null} title={recording.title} disabled={recording.transcriptText === undefined || action !== null || documentMode === 'edit'} />
           {saved && <span className="saved-state"><Check />Saved</span>}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
@@ -345,19 +342,7 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
         />
         <Button className="player-main" size="icon" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause /> : <Play />}</Button>
         <div className="player-timeline">
-          <button
-            type="button"
-            className="waveform"
-            onClick={event => {
-              const rect = event.currentTarget.getBoundingClientRect()
-              seekTo(((event.clientX - rect.left) / rect.width) * (duration || recording.duration))
-            }}
-            aria-label="Seek in audio"
-          >
-            {waveformHeights.map((height, index) => (
-              <span key={index} className={index / waveformHeights.length <= progress ? 'played' : ''} style={{ height: `${height}%` }} />
-            ))}
-          </button>
+          <input type="range" className="audio-timeline" min={0} max={duration || recording.duration || 1} step={0.1} value={currentTime} onChange={event => seekTo(Number(event.target.value), false)} aria-label="Seek in audio" aria-valuetext={`${formatDuration(currentTime)} of ${formatDuration(duration || recording.duration)}`} />
           <div className="player-time"><span>{formatDuration(currentTime)}</span><span>{formatDuration(duration || recording.duration)}</span></div>
         </div>
         <div className="player-skip">
@@ -369,11 +354,9 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
       <div className="recording-workspace">
         <main className="document-pane">
           <div className="document-toolbar">
-            <div className="document-modes" role="tablist" aria-label="Transcript view">
-              <button type="button" className={documentMode === 'preview' ? 'active' : ''} onClick={() => setDocumentMode('preview')}>Markdown</button>
-              <button type="button" className={documentMode === 'edit' ? 'active' : ''} onClick={() => { setSelectedVersion(null); setDocumentMode('edit') }}>Edit</button>
-              <button type="button" className={documentMode === 'timestamps' ? 'active' : ''} onClick={() => setDocumentMode('timestamps')}>Transcript</button>
-            </div>
+            <ToggleGroup type="single" className="document-modes" value={documentMode} onValueChange={value => { if (value === 'preview' || value === 'edit' || value === 'timestamps') { if (value === 'edit') setSelectedVersion(null); setDocumentMode(value) } }} aria-label="Transcript view">
+              <ToggleGroupItem value="preview">Markdown</ToggleGroupItem><ToggleGroupItem value="edit">Edit</ToggleGroupItem><ToggleGroupItem value="timestamps">Transcript</ToggleGroupItem>
+            </ToggleGroup>
             {documentMode === 'edit' && (
               <Button size="sm" onClick={() => void saveTranscript()} disabled={action !== null || recording.transcriptText === undefined}><Save />Save version</Button>
             )}

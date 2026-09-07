@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" role="img" aria-labelledby="title">
+  <title id="title">OpenPlod: an open circle around an audio signal</title>
+  <path d="M190 176A78 78 0 1 1 206 126" stroke="#3975EE" stroke-width="22" stroke-linecap="round"/>
+  <path d="M99 112V144M128 94V162M157 112V144" stroke="#3975EE" stroke-width="16" stroke-linecap="round"/>
+</svg>

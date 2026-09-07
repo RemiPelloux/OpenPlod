@@ -49,11 +49,25 @@ fn read_or_create_token(app_data_dir: &PathBuf) -> Result<String, Box<dyn std::e
   if let Ok(token) = fs::read_to_string(&token_path) {
     let token = token.trim();
     if !token.is_empty() {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&token_path, fs::Permissions::from_mode(0o600))?;
+      }
       return Ok(token.to_owned());
     }
   }
   let token = uuid::Uuid::new_v4().simple().to_string();
-  fs::write(token_path, &token)?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::io::Write;
+    fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&token_path)?.write_all(token.as_bytes())?;
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&token_path, fs::Permissions::from_mode(0o600))?;
+  }
+  #[cfg(not(unix))]
+  fs::write(&token_path, &token)?;
   Ok(token)
 }
 

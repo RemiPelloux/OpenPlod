@@ -89,11 +89,10 @@ export function SettingsPage() {
   const update = (patch: Partial<Settings>) => setSettings(s => ({ ...s, ...patch }))
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 max-w-3xl mx-auto space-y-6">
+    <div className="settings-page">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-serif text-3xl font-medium md:text-4xl">Settings</h1>
-          <p className="text-sm text-muted-foreground mt-1">Configure transcription and sync</p>
+          <h1>Settings</h1>
         </div>
         <Button onClick={save} disabled={saving}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
@@ -109,7 +108,7 @@ export function SettingsPage() {
       )}
 
       <details className="border-b pb-4">
-        <summary className="cursor-pointer text-sm text-muted-foreground">Mobile pairing (deferred)</summary>
+        <summary className="cursor-pointer text-sm text-muted-foreground">Mobile pairing</summary>
       <Card className="mt-4">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
