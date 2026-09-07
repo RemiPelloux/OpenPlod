@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.4.1 - 2026-09-07
+
+Experimental prerelease: transcript, AI Chat, and Android connection workspaces.
+
+### Added
+
+- Dedicated Android connection page with private, reveal-on-demand pairing QR, automatic QR hiding, vault reachability checks, and confirmed desktop unpairing.
+- A staged 1.0.0 roadmap covering additional transcription/analysis providers, Transcript Studio, knowledge organization, synchronization, and release safety gates. These are planned features, not new provider integrations in this release.
+- Real-vault UI regression checks for the transcript reader, exports, Mistral document dialog, chat consent/context, Android connection states, and mobile Back navigation.
+
+### Improved
+
+- Transcripts now use a compact list-and-reader workspace with Markdown preview/source modes, Markdown/text/JSON exports, source filtering, editing links, and Mistral document creation.
+- AI Chat now has a collapsible sources/history panel, selected-source chips, prompt shortcuts, answer copy/export controls, and a fixed composer with explicit cloud consent.
+- Shared custom SVG controls, light/dark styling, and responsive layouts match the existing recording/document workspace.
+- Transcript navigation follows browser Back on small screens. Stale asynchronous responses cannot replace a newly selected transcript or conversation.
+- Settings retains its old pairing link but routes to the dedicated Android workspace; clipboard failures are handled and private pairing codes are masked.
+
+### Validation
+
+- 106 Bun tests; backend type checking; frontend lint; production macOS build.
+- Read-only real-vault UI checks at 320, 390, 900, 1180, and 1440 px, including exports and failure recovery under the production content-security policy.
+- Existing recording UI regression suite covers real playback, waveform pixels, tooltips, tags, search, and keyboard navigation.
+- Android ARM64 debug build and 16 KB APK/ELF alignment checks; physical-phone installation and 16 KB runtime acceptance are not claimed.
+
+### Known Limitations
+
+- Mac package is ad-hoc signed, not notarized. External extraction dependencies and privately provisioned initial Plaud authorization remain required.
+- Only the Mac package is published; the Android debug APK remains a local development artifact, not a production-signed release.
+- No new live-provider or Plaud hardware extraction acceptance in this UI release. Historical extraction evidence and 0.4.0 device/firmware limitations still apply.
+- Additional AI providers in the 1.0 roadmap are not enabled by this release.
+
 ## 0.4.0 - 2026-09-07
 
 Experimental prerelease: desktop workspace and direct-device improvements.

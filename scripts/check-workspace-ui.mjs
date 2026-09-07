@@ -129,7 +129,9 @@ try {
   assert.equal(await page.locator('.desktop-sidebar .nav-item.active').count(), 1);
   await page.locator('.sidebar-actions a[href="/recordings?view=trash"]').click();
   assert.equal(await page.locator('.desktop-sidebar .nav-item.active').count(), 1);
-  await page.locator('.sidebar-nav a[href="/settings#pairing"]').click();
+  await page.locator('.sidebar-nav a[href="/android"]').click();
+  await page.getByRole('heading', { name: 'Android', exact: true }).waitFor();
+  await page.goto(`${origin}/settings#pairing`);
   await page.waitForFunction(() => document.querySelector('#pairing')?.open);
   await page.locator('.sidebar-nav a[href="/developer"]').click();
   await page.getByRole('heading', { name: 'API & MCP', exact: true }).waitFor();

@@ -2,8 +2,8 @@ import { apiUrl, authenticatedHeaders } from './runtime'
 import type { AiAnswer } from '../../../src/organizer/recording-ai-types'
 export type { AiAnswer } from '../../../src/organizer/recording-ai-types'
 export type AiConversation = { id: string; question: string; recordingIds: string[]; createdAt: string }
-export async function aiRequest<T>(path: string): Promise<T> {
-  const response = await fetch(apiUrl(`/ai${path}`), { headers: authenticatedHeaders(), signal: AbortSignal.timeout(15000) })
+export async function aiRequest<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(apiUrl(`/ai${path}`), { headers: authenticatedHeaders(), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) })
   const body = await response.json(); if (!response.ok || !body.success) throw new Error(body.error || 'AI workspace unavailable.'); return body.data
 }
 export async function askRecordings(data: { id: string; conversationId: string; recordingIds: string[]; question: string; consent: true }, onStage: (stage: string) => void, signal: AbortSignal): Promise<AiAnswer> {

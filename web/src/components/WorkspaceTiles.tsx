@@ -70,7 +70,7 @@ export function WorkspaceTiles() {
           <p>Markdown library</p>
         </div>
       </Link>
-      <Link className="workspace-tile" to="/settings#pairing">
+      <Link className="workspace-tile" to="/android">
         <span className="tile-illustration">
           <Smartphone />
         </span>

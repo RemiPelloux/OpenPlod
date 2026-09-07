@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
-import { Save, Loader2, AlertCircle, Copy, Monitor, Smartphone, Unplug } from "@/components/icons"
+import { Link, useLocation } from 'react-router-dom'
+import { Save, Loader2, AlertCircle, Smartphone } from "@/components/icons"
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { api, type Settings } from '@/lib/api'
-import { forgetMobilePairing, getRuntime } from '@/lib/runtime'
-import { QRCodeSVG } from 'qrcode.react'
+import { getRuntime } from '@/lib/runtime'
 import { buildInfo, buildLabel } from '@/lib/build-info'
 
 function Toggle({ checked, onChange, label, description }: { checked: boolean; onChange: (v: boolean) => void; label: string; description: string }) {
@@ -46,9 +45,6 @@ export function SettingsPage() {
     }
   }, [hash])
   const runtime = getRuntime()
-  const pairingPayload = runtime.mode === 'desktop' && runtime.lanAddress
-    ? JSON.stringify({ type: 'openplod-pairing', version: 1, origin: runtime.lanAddress, token: runtime.pairingToken })
-    : ''
   const [settings, setSettings] = useState<Settings>({
     transcriptionEngine: 'whisper',
     mistralApiKey: '',
@@ -124,38 +120,7 @@ export function SettingsPage() {
 
       <details id="pairing" ref={pairingSection} className="border-b pb-4">
         <summary className="cursor-pointer text-sm text-muted-foreground">Mobile pairing</summary>
-      <Card className="mt-4">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            {runtime.mode === 'desktop' ? <Monitor className="h-4 w-4" /> : <Smartphone className="h-4 w-4" />}
-            {runtime.mode === 'desktop' ? 'Mobile pairing' : runtime.mode === 'mobile' ? 'Paired desktop' : 'App pairing'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {runtime.mode === 'desktop' ? (
-            <>
-              <p className="text-sm text-muted-foreground">Use these details in OpenPlod on iPhone or Android while both devices are on the same Wi-Fi.</p>
-              {pairingPayload && (
-                <div className="pairing-qr">
-                  <QRCodeSVG value={pairingPayload} size={184} level="M" marginSize={2} />
-                  <div><p className="font-medium">Scan with OpenPlod mobile</p><p>One scan securely fills the address and private code.</p></div>
-                </div>
-              )}
-              <PairingValue label="Desktop address" value={runtime.lanAddress ?? 'Local network address unavailable'} />
-              <PairingValue label="Private pairing code" value={runtime.pairingToken} secret />
-            </>
-          ) : runtime.mode === 'mobile' ? (
-            <>
-              <PairingValue label="Desktop address" value={runtime.serviceOrigin} />
-              <Button variant="outline" onClick={() => { forgetMobilePairing(); window.location.reload() }}>
-                <Unplug className="mr-2 h-4 w-4" />Forget this desktop
-              </Button>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">Pairing details are available in the installed desktop and mobile apps.</p>
-          )}
-        </CardContent>
-      </Card>
+        <Button asChild variant="outline" className="mt-4"><Link to="/android"><Smartphone />Android connection</Link></Button>
       </details>
 
       {/* Transcription Engine */}
@@ -319,21 +284,6 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
-  )
-}
-
-function PairingValue({ label, value, secret = false }: { label: string; value: string; secret?: boolean }) {
-  const copy = () => void navigator.clipboard.writeText(value)
-  return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="flex min-w-0 items-center gap-2 rounded-md border bg-secondary/40 px-3 py-2">
-        <code className="min-w-0 flex-1 truncate text-xs">{secret ? value.replace(/.(?=.{6})/g, '*') : value}</code>
-        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={copy} aria-label={`Copy ${label}`} title={`Copy ${label}`}>
-          <Copy className="h-3.5 w-3.5" />
-        </Button>
-      </div>
     </div>
   )
 }

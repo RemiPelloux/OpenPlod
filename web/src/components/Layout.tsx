@@ -174,9 +174,9 @@ export function Layout() {
               <span>Plaud Device</span>
             </NavLink>
             <Link
-              to="/settings#pairing"
-              aria-current={location.pathname === '/settings' && location.hash === '#pairing' ? 'page' : undefined}
-              className={`nav-item ${location.pathname === "/settings" && location.hash === "#pairing" ? "active" : ""}`}
+              to="/android"
+              aria-current={location.pathname === '/android' ? 'page' : undefined}
+              className={`nav-item ${location.pathname === "/android" ? "active" : ""}`}
             >
               <Smartphone />
               <span>Android</span>

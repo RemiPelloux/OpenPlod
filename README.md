@@ -6,7 +6,7 @@
 <p align="center"><strong>Local-first Plaud Note Pro recording vault, transcription, and Markdown workspace.</strong></p>
 <p align="center">Import directly over Bluetooth. Keep your original audio. Turn recordings into structured documents and source-linked AI conversations with Mistral.</p>
 <p align="center">
-  <a href="https://github.com/RemiPelloux/OpenPlod/releases/tag/v0.4.0"><img alt="Experimental release 0.4.0" src="https://img.shields.io/badge/release-0.4.0%20experimental-3975EE?style=flat-square" /></a>
+  <a href="https://github.com/RemiPelloux/OpenPlod/releases/tag/v0.4.1"><img alt="Experimental release 0.4.1" src="https://img.shields.io/badge/release-0.4.1%20experimental-3975EE?style=flat-square" /></a>
   <a href="https://github.com/RemiPelloux/OpenPlod/actions/workflows/ci.yml"><img alt="CI source checks" src="https://github.com/RemiPelloux/OpenPlod/actions/workflows/ci.yml/badge.svg" /></a>
   <img alt="macOS Apple Silicon" src="https://img.shields.io/badge/macOS-Apple%20Silicon-111113?style=flat-square" />
   <a href="docs/mcp.md"><img alt="MCP read-only by default" src="https://img.shields.io/badge/MCP-read--only%20by%20default-197A68?style=flat-square" /></a>
@@ -28,13 +28,23 @@
 OpenPlod brings recording, playback, transcription, and export into one desktop-first workspace. The Mac app owns the durable audio vault; the Android companion pairs over your private network and can extract directly from an enrolled Note Pro. Keep recordings on your Plaud, keep a copy on your computer, and work with transcripts as documents.
 
 > [!IMPORTANT]
-> **0.4.0 is an experimental prerelease, not a plug-and-play Plaud replacement.** Direct Bluetooth extraction has been verified on one authorized Plaud Note Pro. Other devices and firmware are not established. Initial desktop authorization still requires a privately provisioned identity; there is no self-service authorization wizard yet. You can use the recording vault, microphone, file imports, transcripts, and documents without a Plaud identity.
+> **0.4.1 is an experimental prerelease, not a plug-and-play Plaud replacement.** Direct Bluetooth extraction has been verified on one authorized Plaud Note Pro. Other devices and firmware are not established. Initial desktop authorization still requires a privately provisioned identity; there is no self-service authorization wizard yet. You can use the recording vault, microphone, file imports, transcripts, and documents without a Plaud identity.
 
 ![OpenPlod desktop recording library in dark mode; private titles are redacted](docs/images/recording-library.png)
 
 *Actual application and local vault, with the Export tab selected. Private recording titles and tags are masked; no mock records or fabricated processing results are shown.*
 
-## New in 0.4.0
+## New in 0.4.1
+
+- **Transcript workspace:** compact list and Markdown reader, export menus, editing links, and Mistral document creation.
+- **AI Chat:** collapsible source/history controls, selected-source chips, prompt shortcuts, answer copying, and a cleaner composer with explicit cloud consent.
+- **Android connections:** a dedicated page with a private pairing QR that stays hidden until requested, vault reachability checks, and confirmed unpairing.
+- **Navigation and reliability:** small-screen transcript Back navigation, guarded asynchronous responses, and real-library regression checks.
+- **Road to 1.0:** a phased feature roadmap with additional AI-provider targets and measurable release gates. Planned providers are not yet implemented.
+
+See the [0.4.1 changelog](CHANGELOG.md#041---2026-09-07) for validation and limitations.
+
+### Previously in 0.4.0
 
 - **A consistent workspace:** redesigned Recordings, Documents, and Plaud Device pages; original SVG icons; compact toolbars; light/dark themes.
 - **AI with selected context:** choose recordings, ask Mistral questions, follow source references, and export the conversation as Markdown.
@@ -45,13 +55,25 @@ OpenPlod brings recording, playback, transcription, and export into one desktop-
 
 See the [changelog](CHANGELOG.md#040---2026-09-07) for validation and remaining limitations.
 
+## Road to 1.0.0
+
+The [1.0.0 roadmap](ROADMAP.md) expands OpenPlod into a multi-provider transcript and knowledge workspace while keeping original audio safe. These are **planned features**, not capabilities included in 0.4.1:
+
+- **0.5:** OpenAI and AssemblyAI speech-to-text, stronger Mistral/Deepgram/local Whisper controls, and separate cloud/local AI choices for transcript analysis.
+- **0.6:** Transcript Studio with reviewed AI cleanup, translation, version comparison, chapters, reusable document templates, and subtitle exports.
+- **0.7:** Linked Markdown knowledge, managed Obsidian export, richer source-linked chat, and expanded API/MCP automation.
+- **0.8:** Resumable Android uploads, offline synchronization, pairing management, and validated direct-device recovery.
+- **0.9 -> 1.0:** Fresh-owner Plaud onboarding, backup/restore, privacy hardening, performance validation, and signed releases.
+
+Additional transcript-analysis targets include OpenAI, Anthropic, and local Ollama; speech-to-text and text analysis remain separate capabilities. New providers require explicit configuration, consent, and real-data validation. See the [provider plan](ROADMAP.md#050---more-ai-providers) and [release gates](ROADMAP.md#100-release-gates).
+
 ## Download
 
 | Platform | Package | Notes |
 | --- | --- | --- |
-| macOS Apple Silicon | [OpenPlod 0.4.0 ZIP](https://github.com/RemiPelloux/OpenPlod/releases/download/v0.4.0/OpenPlod-0.4.0-macos-arm64.zip) | Ad-hoc signed, not notarized. Requires external tools for direct Plaud extraction. |
+| macOS Apple Silicon | [OpenPlod 0.4.1 ZIP](https://github.com/RemiPelloux/OpenPlod/releases/download/v0.4.1/OpenPlod-0.4.1-macos-arm64.zip) | Ad-hoc signed, not notarized. Requires external tools for direct Plaud extraction. |
 | Android ARM64 | [Build instructions](#android-companion) | Current source uses a native, SDK-free direct Bluetooth adapter. Development build only; no new public APK release yet. |
-| Source | [Tagged source and release notes](https://github.com/RemiPelloux/OpenPlod/releases/tag/v0.4.0) | Includes frontend, backend, native adapters, API, MCP, and tests. |
+| Source | [Tagged source and release notes](https://github.com/RemiPelloux/OpenPlod/releases/tag/v0.4.1) | Includes frontend, backend, native adapters, API, MCP, and tests. |
 
 Download `SHA256SUMS.txt` from the same release and verify the ZIP with `shasum -a 256 -c SHA256SUMS.txt`. Extract the archive, move `OpenPlod.app` to Applications, and open it. macOS may require explicit approval in Privacy & Security because the build is not notarized. Verify the source and checksum before approving it; do not disable Gatekeeper system-wide.
 
@@ -87,7 +109,7 @@ The shared React interface uses shadcn-style Radix controls, original custom SVG
 
 ## Current Support
 
-| Capability | Status in 0.4.0 |
+| Capability | Status in 0.4.1 |
 | --- | --- |
 | macOS desktop vault | Built and tested on Apple Silicon |
 | Mac -> Note Pro Bluetooth download | Real recording listed, downloaded, decoded, imported, and played; source session retained |
@@ -283,7 +305,7 @@ The current source validation run passed **106 Bun tests**, backend type checkin
 
 Browser checks use an isolated snapshot of a real local library, not mock API responses. At widths from 320 to 1672 px, the recording and document flows passed playback, painted-waveform checks, failure recovery, formatting, outline navigation, export, tooltips, keyboard navigation, responsive layout, and reduced-motion checks. The installed native interface was checked separately with its real saved recordings and visible build identity. No real webhook destination was contacted. UI checks are not device-transfer or provider-generation acceptance.
 
-Earlier live Mistral acceptance used an actual Plaud transcript: generation events, structured French Markdown preview, explicit save, provider/model provenance, and unchanged source transcript passed. Earlier Android hardware acceptance verified direct extraction on one enrolled Note Pro; its SDK-free build passed ZIP/ELF alignment checks. These are historical hardware observations, not a claim that every phone, firmware, or fresh install was retested for 0.4.0. No production-signed Android APK is distributed in this release.
+Earlier live Mistral acceptance used an actual Plaud transcript: generation events, structured French Markdown preview, explicit save, provider/model provenance, and unchanged source transcript passed. Earlier Android hardware acceptance verified direct extraction on one enrolled Note Pro; its SDK-free build passed ZIP/ELF alignment checks. These are historical hardware observations, not a claim that every phone, firmware, or fresh install was retested for 0.4.1. No production-signed Android APK is distributed in this release.
 
 Hardware evidence is separate: one approximately 76-second Note Pro recording was downloaded directly on Mac, decoded, imported, and played, and its source session was still present. This does not establish compatibility across devices or replace interrupted-transfer and fresh-install acceptance. The final installed-phone touch-flow check remains incomplete. See [ROADMAP.md](ROADMAP.md) for outstanding gates.
 
