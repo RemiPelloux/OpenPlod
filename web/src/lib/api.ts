@@ -66,6 +66,7 @@ export interface Settings {
 }
 
 export interface TranscriptVersion {
+  segments?: string | { start: number; end: number; text: string; speaker?: number | string }[] | null
   id: string
   recordingId: string
   fullText: string
@@ -144,7 +145,7 @@ interface ApiEnvelope<T> {
 type RawSettings = Record<string, string | boolean | undefined>
 
 interface RawTranscriptSegment {
-  speaker?: number
+  speaker?: number | string
   text?: string
   start?: number
   end?: number
@@ -215,7 +216,7 @@ function mapRecording(r: RawRecording): Recording {
       const s = segs[i]
       segments.push({
         id: `s${i}`,
-        speaker: s.speaker !== undefined ? `Speaker ${s.speaker}` : 'Speaker',
+        speaker: typeof s.speaker === 'string' ? s.speaker : s.speaker !== undefined ? `Speaker ${s.speaker}` : 'Speaker',
         text: s.text || '',
         startTime: s.start || 0,
         endTime: s.end || 0,
@@ -340,8 +341,8 @@ export const api = {
     return res.data
   },
 
-  getPlaudStatus: async (): Promise<PlaudStatus> => {
-    const res = await fetchJSON<ApiEnvelope<PlaudStatus>>('/plaud/status')
+  getPlaudStatus: async (signal?: AbortSignal): Promise<PlaudStatus> => {
+    const res = await fetchJSON<ApiEnvelope<PlaudStatus>>('/plaud/status', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(45000)]) : AbortSignal.timeout(45000) })
     return res.data
   },
 
@@ -411,8 +412,8 @@ export const api = {
     return mapRecording(res.data)
   },
 
-  updateTranscript: async (id: string, fullText: string, revision: number): Promise<void> => {
-    await fetchJSON(`/recordings/${id}/transcript`, { method: 'PATCH', body: JSON.stringify({ fullText, revision }) })
+  updateTranscript: async (id: string, fullText: string, revision: number, segments?: { start: number; end: number; text: string; speaker?: number | string }[]): Promise<void> => {
+    await fetchJSON(`/recordings/${id}/transcript`, { method: 'PATCH', body: JSON.stringify({ fullText, revision, segments }) })
   },
 
   getTranscriptVersions: async (id: string): Promise<TranscriptVersion[]> => {
@@ -450,8 +451,9 @@ export const api = {
     return res.data.runId
   },
 
-  getAudioBlob: async (id: string): Promise<Blob> => {
-    const res = await fetch(apiUrl(`/recordings/${id}/audio`), { headers: authenticatedHeaders() })
+  getAudioBlob: async (id: string, signal?: AbortSignal): Promise<Blob> => {
+    const timeout = AbortSignal.timeout(30000)
+    const res = await fetch(apiUrl(`/recordings/${id}/audio`), { headers: authenticatedHeaders(), signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
     if (!res.ok) throw new Error(`Could not load audio: ${res.status}`)
     return res.blob()
   },

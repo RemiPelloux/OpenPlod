@@ -26,8 +26,10 @@ class PlaudVaultClient {
         token = pairingToken
     }
 
-    fun session(): JSONObject = execute(Request.Builder().url("$origin/api/mobile/plaud/session")
-        .post("{}".toRequestBody("application/json".toMediaType())))
+    fun requestAuthorization(publicKey: String, name: String): JSONObject = execute(Request.Builder().url("$origin/api/plaud/authorizations")
+        .post(JSONObject().put("publicKey", publicKey).put("name", name).toString().toRequestBody("application/json".toMediaType())))
+    fun authorization(id: String): JSONObject { require(id.matches(Regex("[a-f0-9-]{36}"))); return execute(Request.Builder().url("$origin/api/plaud/authorizations/$id")) }
+    fun acknowledgeAuthorization(id: String): JSONObject { require(id.matches(Regex("[a-f0-9-]{36}"))); return execute(Request.Builder().url("$origin/api/plaud/authorizations/$id/acknowledge").post("{}".toRequestBody("application/json".toMediaType()))) }
 
     fun exportAudio(directory: File, id: String, filename: String): File {
         require(id.matches(Regex("[a-zA-Z0-9-]+"))) { "Invalid recording ID." }

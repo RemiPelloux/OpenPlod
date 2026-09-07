@@ -18,6 +18,11 @@ export interface LocalPlaudRecording {
 }
 
 export interface DeviceSnapshot {
+  configured: boolean
+  busy: boolean
+  autoImport: boolean
+  lastNotice: string | null
+  lastCheck: number
   state: 'not_configured' | 'authenticating' | 'disconnected' | 'scanning' | 'connecting' | 'ready'
   error: string | null
   serial: string | null

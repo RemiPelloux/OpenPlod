@@ -4,6 +4,8 @@
  */
 
 import { Hono } from 'hono';
+import { z } from 'zod';
+import { RecordingBookmarks } from '../library/bookmarks';
 import { db, sqlite } from '../db/client';
 import { recordings, transcripts, speakerProfiles, speakerMappings, userSettings } from '../db/schema';
 import { eq, desc, and, sql, like } from 'drizzle-orm';
@@ -26,6 +28,11 @@ import { forwardRecording } from '../library/forwarding';
 import { queueRecordingProcessing } from '../library/processing';
 
 const app = new Hono();
+let bookmarkStore: RecordingBookmarks | undefined;
+const bookmarks = () => bookmarkStore ??= new RecordingBookmarks(sqlite);
+app.get('/:id/bookmarks', c => { try { return c.json({ success: true, data: bookmarks().list(c.req.param('id')) }); } catch (e) { return c.json({ success: false, error: 'Recording bookmarks unavailable.' }, 404); } });
+app.post('/:id/bookmarks', async c => { try { return c.json({ success: true, data: bookmarks().add(c.req.param('id'), await c.req.json()) }); } catch (e) { return c.json({ success: false, error: (e as Error).message }, 400); } });
+app.delete('/:id/bookmarks/:bookmarkId', c => { try { return c.json({ success: true, data: bookmarks().remove(c.req.param('id'), c.req.param('bookmarkId')) }); } catch { return c.json({ success: false, error: 'Bookmark unavailable.' }, 404); } });
 
 function incomingDirectory(): string {
   const libraryPath = process.env.OPENPLOD_LIBRARY_PATH;
@@ -201,6 +208,10 @@ app.patch('/:id/transcript', async c => {
     return c.json({ success: false, error: 'Transcript text and a valid revision are required.' }, 400);
   }
   try {
+    if (body.segments !== undefined && body.segments !== null) body.segments = z.array(z.object({
+      start: z.number().finite().nonnegative(), end: z.number().finite().nonnegative(), text: z.string().max(50000),
+      speaker: z.union([z.number().int().nonnegative(), z.string().max(80)]).optional(), confidence: z.number().optional(),
+    }).refine(s => s.end >= s.start)).max(20000).parse(body.segments);
     updateTranscript({ recordingId: c.req.param('id'), fullText: body.fullText, segments: body.segments, revision: body.revision });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Transcript update failed.';

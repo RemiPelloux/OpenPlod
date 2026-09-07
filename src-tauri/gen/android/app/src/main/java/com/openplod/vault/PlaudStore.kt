@@ -30,7 +30,7 @@ class PlaudStore(context: Context) {
     }
 
     fun retain(sn: String, sessionId: Long, exported: File): JSONObject {
-        require(sn.matches(Regex("881[0-9A-Za-z]+")) && sessionId > 0) { "Invalid Note Pro recording identity." }
+        require(sn.matches(Regex("[0-9A-F]{16}")) && sessionId > 0) { "Invalid Note Pro recording identity." }
         synchronized(this) { if (rows.containsKey("$sn:$sessionId")) return row("$sn:$sessionId") }
         check(exported.length() > 0) { "The device returned an empty audio file." }
         val header = ByteArray(4)
@@ -41,7 +41,7 @@ class PlaudStore(context: Context) {
         val target = File(directory, filename)
         if (exported.canonicalPath != target.canonicalPath) {
             val staging = File(directory, "$filename.part")
-            exported.copyTo(staging, overwrite = true)
+            staging.writeBytes(DirectPlaudProtocol.playbackOgg(exported.readBytes()))
             java.io.RandomAccessFile(staging, "rw").use { it.fd.sync() }
             check(staging.renameTo(target)) { "Could not commit local audio." }
         }
@@ -50,9 +50,11 @@ class PlaudStore(context: Context) {
 
     private fun register(sn: String, sessionId: Long, target: File): JSONObject {
         val id = "$sn:$sessionId"
+        val durationMs = duration(target)
+        check(durationMs > 0) { "Audio duration could not be verified. Original bytes retained for retry." }
         val metadata = JSONObject().put("sourceRecordingId", id).put("sessionId", sessionId.toString())
             .put("deviceSerial", sn).put("filename", target.name).put("size", target.length())
-            .put("fingerprint", fingerprint(target)).put("durationMs", duration(target))
+            .put("fingerprint", fingerprint(target)).put("durationMs", durationMs)
             .put("recordedAt", java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
                 timeZone = java.util.TimeZone.getTimeZone("UTC")
             }.format(java.util.Date(Math.multiplyExact(sessionId, 1000))))

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Bluetooth, FileText, Loader2, RefreshCw } from 'lucide-react'
+import { ArrowRight, AudioLines, Bluetooth, ChevronDown, FileText, Loader2, RefreshCw } from "@/components/icons"
 import { Button } from '@/components/ui/button'
 import { SaveTranscriptDialog } from '@/components/NoteDialogs'
 import { api, type TranscriptDocument } from '@/lib/api'
@@ -52,7 +52,7 @@ export function TranscriptsPage() {
       </select></label>
       <Button asChild variant="ghost" size="sm"><Link to="/devices"><Bluetooth />Plaud recordings</Link></Button>
     </div>
-    {error && <div className="transcripts-error" role="alert"><p>{error}</p><Button variant="outline" size="sm" onClick={() => setRefreshKey(key => key + 1)}>Retry</Button></div>}
+    {error && <div className="transcripts-error" role="alert"><p>{error}</p><Button variant="outline" size="sm" onClick={() => setRefreshKey(key => key + 1)}><RefreshCw />Retry</Button></div>}
     <div className="transcript-documents">
       {documents.map(document => <div key={document.recordingId} className="transcript-document-row"><Link to={`/transcripts/${document.recordingId}`} className="transcript-document">
         <FileText aria-hidden="true" />
@@ -63,7 +63,7 @@ export function TranscriptsPage() {
       </Link><div className="transcript-document-actions"><SaveTranscriptDialog recordingId={document.recordingId} versionId={null} title={document.filename?.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ') || 'Untitled transcript'} /></div></div>)}
     </div>
     {loading && <div className="transcripts-loading" role="status" aria-label="Loading transcripts"><Loader2 className="animate-spin" /></div>}
-    {!loading && !error && documents.length === 0 && <section className="transcripts-empty"><FileText /><h2>No transcripts yet</h2><div><Button asChild><Link to="/">Recordings</Link></Button><Button asChild variant="outline"><Link to="/devices">Connect Plaud</Link></Button></div></section>}
-    {hasMore && documents.length > 0 && <Button className="transcripts-more" variant="outline" disabled={loading} onClick={() => void loadMore()}>Load more</Button>}
+    {!loading && !error && documents.length === 0 && <section className="transcripts-empty"><FileText /><h2>No transcripts yet</h2><div><Button asChild><Link to="/"><AudioLines />Recordings</Link></Button><Button asChild variant="outline"><Link to="/devices"><Bluetooth />Connect Plaud</Link></Button></div></section>}
+    {hasMore && documents.length > 0 && <Button className="transcripts-more" variant="outline" disabled={loading} onClick={() => void loadMore()}>{loading ? <Loader2 className="animate-spin" /> : <ChevronDown />}Load more</Button>}
   </div>
 }

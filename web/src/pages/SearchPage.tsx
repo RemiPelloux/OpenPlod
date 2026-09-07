@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Loader2, Mic } from 'lucide-react'
+import { Search, Loader2, Mic } from "@/components/icons"
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { api, type SearchResult } from '@/lib/api'

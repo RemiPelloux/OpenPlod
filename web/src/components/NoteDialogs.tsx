@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as Dialog from '@radix-ui/react-dialog'
-import { Copy, Download, Loader2, NotebookPen, Send, Sparkles, X } from 'lucide-react'
+import { Copy, Download, Loader2, NotebookPen, Send, FilePlus2, Wand2, RotateCcw, X } from "@/components/icons"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -29,7 +29,7 @@ export function FolderSelect({ folders, value, onChange, rootLabel = 'Inbox', di
 
 export function SaveTranscriptDialog({ recordingId, versionId, title, disabled }: {recordingId: string; versionId: string | null; title: string; disabled?: boolean}) {
   const [open, setOpen] = useState(false)
-  return <><Button size="sm" title="Structure this transcript into a document with Mistral" disabled={disabled} onClick={() => setOpen(true)}><Sparkles />Create document</Button>
+  return <><Button size="sm" variant="outline" title="Structure this transcript into a document with Mistral" disabled={disabled} onClick={() => setOpen(true)}><FilePlus2 />Create document</Button>
     {open && <SaveTranscriptForm recordingId={recordingId} versionId={versionId} title={title} onClose={() => setOpen(false)} />}</>
 }
 
@@ -81,9 +81,9 @@ function SaveTranscriptForm({ recordingId, versionId, title, onClose }: {recordi
       </>}
       <label>Folder<FolderSelect folders={folders} value={folderId} onChange={setFolderId} disabled={loading || busy} /></label>
       {error && <p role="alert" className="note-error">{error}</p>}
-      <footer>{busy && !generation ? <Button type="button" variant="outline" onClick={() => generationController.current?.abort()}>Cancel generation</Button> : <Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>}
-        {generation && <Button type="button" variant="outline" disabled={busy} onClick={() => { setGeneration(null); setError('') }}>Start again</Button>}
-        <Button disabled={loading || busy || !name.trim()}>{busy ? <Loader2 className="animate-spin" /> : generation ? <NotebookPen /> : <Sparkles />}{generation ? 'Save document' : 'Generate with Mistral'}</Button></footer>
+      <footer>{busy && !generation ? <Button type="button" variant="ghost" onClick={() => generationController.current?.abort()}><X />Cancel generation</Button> : <Button type="button" variant="ghost" disabled={busy} onClick={onClose}><X />Cancel</Button>}
+        {generation && <Button type="button" variant="outline" disabled={busy} onClick={() => { setGeneration(null); setError('') }}><RotateCcw />Start again</Button>}
+        <Button disabled={loading || busy || !name.trim()}>{busy ? <Loader2 className="animate-spin" /> : generation ? <NotebookPen /> : <Wand2 />}{generation ? 'Save document' : 'Generate with Mistral'}</Button></footer>
     </form>
   </NoteDialog>
 }
@@ -126,7 +126,7 @@ export function SendNoteDialog({ document, onClose }: {document: NoteDocument; o
       {error && <p role="alert" className="note-error">{error}</p>}
       {sent && <p role="status">{sent.state === 'sent' ? 'Destination accepted the document.' : 'Delivery unconfirmed. Check the destination before starting another delivery.'}</p>}
       {history.length > 0 && <section className="note-delivery-history"><h3>Recent deliveries</h3>{history.slice(0, 5).map(row => <div key={row.id}><span>{destinations.find(item => item.id === row.destinationId)?.name || row.destinationId}</span><span>{row.state === 'sent' ? 'Accepted' : row.state === 'pending' ? 'Pending' : 'Unconfirmed'}</span><small>{new Date(row.createdAt).toLocaleString()}</small></div>)}</section>}
-      <footer><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Close</Button><Button disabled={busy || !destinationId || !!sent}>{busy ? <Loader2 className="animate-spin" /> : <Send />}Send document</Button></footer>
+      <footer><Button type="button" variant="ghost" disabled={busy} onClick={onClose}><X />Close</Button><Button disabled={busy || !destinationId || !!sent}>{busy ? <Loader2 className="animate-spin" /> : <Send />}Send document</Button></footer>
     </form>
   </NoteDialog>
 }

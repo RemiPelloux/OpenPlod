@@ -6,6 +6,7 @@ import { PlaudTransport } from './plaud-transport';
 import { decodePlaudAudio } from './plaud-audio';
 import { downloadPlaudSession, listPlaudSessions, recordingHandshake } from './plaud-transfer';
 import { fingerprintFile, importRecordingFile } from '../library/recording-library';
+import { openPlaudCheckpoint } from './plaud-checkpoint';
 
 interface DeviceIdentity extends PlaudIdentity { identifier: string; serial: string; bindingToken: string }
 const vaultRoot = () => dirname(resolve(process.env.OPENPLOD_LIBRARY_PATH || './data/recordings'));
@@ -15,7 +16,7 @@ let active: AbortController | null = null;
 export const directPlaudConfigured = () => process.platform === 'darwin' && existsSync(identityPath());
 export function cancelDirectPlaud() { active?.abort(); }
 
-async function loadIdentity(): Promise<DeviceIdentity> {
+export async function loadIdentity(): Promise<DeviceIdentity> {
   const file = identityPath(), info = await stat(file);
   if (!info.isFile() || (info.mode & 0o077) !== 0 || info.uid !== process.getuid?.()) throw new Error('Plaud identity file must be private to this macOS user');
   let identity: DeviceIdentity;
@@ -87,7 +88,14 @@ export async function importDirectPlaudRecording(sessionId: number) {
     const sessions = await listPlaudSessions(connection);
     const selected = sessions.find(session => session.sessionId === sessionId);
     if (!selected) throw new Error('Recording is no longer available on the Plaud');
-    const downloaded = await downloadPlaudSession(connection, selected);
+    const resumeDirectory = join(vaultRoot(), 'incoming', 'plaud-resume');
+    await mkdir(resumeDirectory, { recursive: true, mode: 0o700 });
+    const resumePath = join(resumeDirectory, `${identity.serial}-${sessionId}-${selected.size}.part`);
+    const previous = await readFile(resumePath).catch(() => Buffer.alloc(0));
+    const prefix = previous.subarray(0, Math.min(previous.length, selected.size - 1));
+    const checkpoint = await openPlaudCheckpoint(resumePath, prefix.length);
+    const downloaded = await downloadPlaudSession(connection, selected, { prefix, checkpoint: bytes => checkpoint.save(bytes) })
+      .finally(() => checkpoint.close());
     const decoded = await decodePlaudAudio(downloaded.bytes, async ciphertext => {
       const reply = await connection.transport.request('rsa-decrypt', { key: identity.privateKey, data: ciphertext.toString('base64') });
       return Buffer.from(reply.data ?? '', 'base64');
@@ -121,6 +129,7 @@ export async function importDirectPlaudRecording(sessionId: number) {
           downloadedAt: new Date().toISOString(),
         }), { mode: 0o600 });
       }
+      await unlink(resumePath).catch(() => undefined);
       return { ...result, durationMs: Math.round(duration * 1000), sourceRetained: true };
     } finally {
       for (const path of [encryptedPath, oggPath, playbackPath]) await unlink(path).catch(() => undefined);

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { PlaudDownload, PlaudSessionPages, listPlaudSessions, recordingHandshake } from './plaud-transfer';
+import { downloadPlaudSession } from './plaud-transfer';
 
 function page(request: number, total: number, offset: number, ids: number[]) {
   const packet = Buffer.alloc(11 + ids.length * 10);
@@ -25,6 +26,20 @@ const session = { sessionId: 7, size: 4, scene: 0, timezone: 0 };
 const head = Buffer.from('011c000700000000', 'hex');
 const tail = Buffer.from('011d0007000000ffff', 'hex');
 const data = Buffer.from('0207000000000000000401020304', 'hex');
+test('resume retains prefix, requests the exact offset and still requires completion tail', async () => {
+  const remaining = Buffer.from('020700000002000000020304', 'hex');
+  const packets = [head, remaining, tail]; let offset = -1; let saved = Buffer.alloc(0);
+  const result = await downloadPlaudSession({ write: async bytes => { offset = Buffer.from(bytes).readUInt32LE(7); }, packet: async () => packets.shift()! }, session,
+    { prefix: Buffer.from([1, 2]), checkpoint: async bytes => { saved = Buffer.from(bytes); } });
+  expect(offset).toBe(2); expect(result.bytes).toEqual(Buffer.from([1, 2, 3, 4])); expect(saved.equals(result.bytes)).toBe(true);
+  expect(() => new PlaudDownload(session, Buffer.alloc(4))).toThrow('prefix');
+});
+test('interrupted transfer checkpoints received bytes without accepting incomplete audio', async () => {
+  const packets = [head, data]; let saved = Buffer.alloc(0);
+  await expect(downloadPlaudSession({ write: async () => {}, packet: async () => { if (!packets.length) throw new Error('disconnected'); return packets.shift()!; } }, session,
+    { checkpoint: async bytes => { saved = Buffer.from(bytes); } })).rejects.toThrow('disconnected');
+  expect(saved).toEqual(Buffer.from([1, 2, 3, 4]));
+});
 
 test('download requires success head, exact contiguous bytes and matching completion tail', () => {
   const transfer = new PlaudDownload(session);

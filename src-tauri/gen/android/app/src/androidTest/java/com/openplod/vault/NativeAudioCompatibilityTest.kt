@@ -7,12 +7,9 @@ import android.content.Intent
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import org.conscrypt.Conscrypt
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
-import sdk.audio.AudioExportFormat
-import sdk.audio.AudioExporter
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -44,33 +41,21 @@ class NativeAudioCompatibilityTest {
         } finally { instrumentation.removeMonitor(monitor) }
     }
 
-    @Test fun nativeDependenciesLoadWithoutMp3Encoder() {
-        listOf("tnt_ble_utils", "opus", "opusJni", "jni_ogg").forEach { System.loadLibrary(it) }
-        assertNotNull(Conscrypt.newProvider())
+    @Test fun unsafeCommandsAreRejected() {
+        assertThrows(IllegalArgumentException::class.java) { DirectPlaudProtocol.chunks(0xfe20, byteArrayOf(1)) }
+        assertThrows(IllegalArgumentException::class.java) { DirectPlaudProtocol.command(3, byteArrayOf()) }
     }
 
-    @Test fun sdkExportsPlayableOpusWithoutLame() {
+    @Test fun androidPlaysOpusWithoutVendorSdk() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val directory = File(context.cacheDir, "opus-compatibility-test").apply { mkdirs() }
         val source = File(directory, "fixture.opus")
         instrumentation.context.assets.open("tone.opus").use { input -> source.outputStream().use { input.copyTo(it) } }
-        val done = CountDownLatch(1)
-        var output: File? = null
-        var failure: String? = null
-        AudioExporter(context).exportAudioAsync(source, File(directory, "exported.opus").path, AudioExportFormat.OPUS, null, 1,
-            object : AudioExporter.ExportCallback {
-                override fun onProgress(progress: Int, message: String) {}
-                override fun onError(error: String) { failure = error; done.countDown() }
-                override fun onComplete(outputFile: File) { output = outputFile; done.countDown() }
-            })
-        assertTrue("SDK export timed out", done.await(30, TimeUnit.SECONDS))
-        assertNull(failure, failure)
-        val exported = requireNotNull(output)
-        assertTrue("SDK export should preserve the original Opus bytes", source.readBytes().contentEquals(exported.readBytes()))
+        DirectPlaudProtocol.validateOgg(source.readBytes(), 1)
         val reader = MediaMetadataRetriever()
         try {
-            reader.setDataSource(exported.path)
+            reader.setDataSource(source.path)
             val duration = reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0
             assertTrue("Exported Opus must have playable duration", duration >= 900)
         } finally { reader.release() }

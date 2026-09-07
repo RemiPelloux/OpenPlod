@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.4.0 - 2026-09-07
+
+Experimental prerelease: desktop workspace and direct-device improvements.
+
+### Added
+
+- Recording-context AI chat through Mistral, with selected sources, consent, stored conversations, citations, and Markdown export.
+- Timestamp bookmarks, playback speed controls, segment/speaker editing, and right-click recording tags.
+- Native Android direct Bluetooth adapter without the proprietary Plaud SDK, plus encrypted enrollment approved on an authorized Mac.
+- Opt-in automatic Plaud import and offset-based Bluetooth transfer checkpoints.
+- 91 custom SVG icon exports, visible build identity, and a verified Mac installer with recoverable duplicate-app archives.
+- MIT license for original OpenPlod contributions, licensing-scope documentation, and GitHub Sponsors integration.
+
+### Improved
+
+- Consistent compact Recordings, Documents, and Plaud Device workspaces in light and dark themes.
+- Markdown selection formatting, document outline/source panels, export controls, and small-screen layouts.
+- Audio loading now times out, supports cancellation, and reports decoding failures instead of leaving playback spinning.
+- Installer launch environment avoids inherited terminal XPC settings that can leave a native window blank.
+
+### Validation
+
+- 106 Bun tests, backend type checking, frontend lint, and production Mac build.
+- Android ARM64 debug build and 16 KB APK/ELF alignment checks passed; no new physical-phone acceptance or APK publication in this release.
+- Real-library browser checks for playback, waveform rendering, export, document formatting, tooltips, navigation, and responsive layouts at 320-1672 px.
+- Installed Mac interface and retained recordings verified separately from browser tests.
+- Prior hardware acceptance: direct extraction and source retention on one authorized Note Pro, on Mac and Android. Hardware compatibility was not re-established across other devices for this release.
+
+### Known Limitations
+
+- Initial desktop identity provisioning is not self-service or verified account-free. Android enrollment requires the already-authorized Mac.
+- Mac download is ad-hoc signed, not notarized; direct extraction requires external Swift, ffmpeg, and ffprobe.
+- Android source is experimental. This release distributes a Mac ZIP, not a production-signed Android APK.
+- Byte-offset mobile-to-vault upload resumption, cross-peer tombstone propagation, original-sidecar purge, and broad device/firmware acceptance remain open.
+- Upstream declares MIT in its README but supplies no standalone license notice; see LICENSING.md.
+
 ## 0.3.0 - 2026-09-07
 
 Experimental desktop-first release.

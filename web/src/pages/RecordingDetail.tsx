@@ -20,17 +20,23 @@ import {
   Play,
   RotateCcw,
   Save,
-  SkipBack,
-  SkipForward,
-  Sparkles,
+  Undo2,
+  Redo2,
+  AlignLeft,
+  AudioLines,
+  ListTree,
   Trash2,
   Upload,
   X,
-} from 'lucide-react'
+} from "@/components/icons"
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui/icon-button'
+import { PlaybackSpeedMenu } from '@/components/PlaybackSpeedMenu'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { SaveTranscriptDialog } from '@/components/NoteDialogs'
+import { RecordingBookmarks } from '@/components/RecordingBookmarks'
+import { SegmentEditor } from '@/components/SegmentEditor'
 import { api, type Recording, type TranscriptSegment, type TranscriptVersion } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import { exportDocument, exportOriginalAudio, recordingMarkdown, safeDocumentName as safeName } from '@/lib/document-export'
@@ -63,6 +69,7 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
   const [saved, setSaved] = useState(false)
   const [action, setAction] = useState<BusyAction>(null)
   const [playing, setPlaying] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState(1)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [audioUrl, setAudioUrl] = useState('')
@@ -95,6 +102,19 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
   }, [id])
 
   useEffect(() => { void loadRecording() }, [loadRecording])
+  useEffect(() => {
+    const version = searchParams.get('version')
+    if (version) setSelectedVersion(versions.find(v => v.id === version) ?? null)
+    if (searchParams.has('t')) setDocumentMode('timestamps')
+  }, [searchParams, versions])
+  const displaySegments = useMemo<TranscriptSegment[]>(() => {
+    if (!selectedVersion) return recording?.segments || []
+    try {
+      const raw = typeof selectedVersion.segments === 'string' ? JSON.parse(selectedVersion.segments) : selectedVersion.segments
+      if (!Array.isArray(raw)) return []
+      return raw.filter(s => Number.isFinite(s.start) && Number.isFinite(s.end) && s.end >= s.start).map((s, i) => ({ id: `s${i}`, text: s.text, startTime: s.start, endTime: s.end, speaker: typeof s.speaker === 'string' ? s.speaker : `Speaker ${s.speaker ?? ''}` }))
+    } catch { return [] }
+  }, [selectedVersion, recording?.segments])
 
   useEffect(() => {
     if (!recording || !['pending', 'transcribing', 'summarizing'].includes(recording.status)) return
@@ -146,6 +166,7 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
   const seekTo = useCallback((time: number, autoplay = true) => {
     const audio = audioRef.current
     if (!audio) return
+    time = Math.max(0, Math.min(Number.isFinite(audio.duration) ? audio.duration : time, time))
     audio.currentTime = time
     setCurrentTime(time)
     if (autoplay) void audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
@@ -270,7 +291,7 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
         <AlertCircle className="mb-3 h-10 w-10 opacity-40" />
         <p className="font-medium text-foreground">Recording unavailable</p>
         <p className="mt-1 text-sm">{error || 'Recording not found'}</p>
-        <Button variant="outline" size="sm" className="mt-4" onClick={() => void loadRecording()}>Retry</Button>
+        <Button variant="outline" size="sm" className="mt-4" onClick={() => void loadRecording()}><RotateCcw />Retry</Button>
       </div>
     )
   }
@@ -326,19 +347,21 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
           onTimeUpdate={() => {
             const time = audioRef.current?.currentTime ?? 0
             setCurrentTime(time)
-            const segment = recording.segments ? findActiveSegment(recording.segments, time) : undefined
+            const segment = findActiveSegment(displaySegments, time)
             setActiveSegment(segment?.id ?? null)
           }}
           onLoadedMetadata={() => {
             const audio = audioRef.current
             if (!audio) return
             setDuration(Number.isFinite(audio.duration) ? audio.duration : recording.duration)
+            audio.playbackRate = playbackRate
             const requestedTime = Number(searchParams.get('t'))
             if (Number.isFinite(requestedTime) && requestedTime > 0) seekTo(requestedTime, false)
           }}
           onEnded={() => setPlaying(false)}
           onPause={() => setPlaying(false)}
           onPlay={() => setPlaying(true)}
+          onError={() => { setPlaying(false); setError('This audio could not be played. Download the original or reload the recording.'); }}
         />
         <Button className="player-main" size="icon" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause /> : <Play />}</Button>
         <div className="player-timeline">
@@ -346,8 +369,9 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
           <div className="player-time"><span>{formatDuration(currentTime)}</span><span>{formatDuration(duration || recording.duration)}</span></div>
         </div>
         <div className="player-skip">
-          <Button variant="ghost" size="icon" onClick={() => seekTo(Math.max(0, currentTime - 15))} aria-label="Back 15 seconds"><SkipBack /></Button>
-          <Button variant="ghost" size="icon" onClick={() => seekTo(Math.min(duration || recording.duration, currentTime + 15))} aria-label="Forward 15 seconds"><SkipForward /></Button>
+          <PlaybackSpeedMenu value={playbackRate} onChange={value => { setPlaybackRate(value); if (audioRef.current) audioRef.current.playbackRate = value }} />
+          <IconButton onClick={() => seekTo(Math.max(0, currentTime - 15))} label="Back 15 seconds"><Undo2 /></IconButton>
+          <IconButton onClick={() => seekTo(Math.min(duration || recording.duration, currentTime + 15))} label="Forward 15 seconds"><Redo2 /></IconButton>
         </div>
       </section>
 
@@ -355,7 +379,7 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
         <main className="document-pane">
           <div className="document-toolbar">
             <ToggleGroup type="single" className="document-modes" value={documentMode} onValueChange={value => { if (value === 'preview' || value === 'edit' || value === 'timestamps') { if (value === 'edit') setSelectedVersion(null); setDocumentMode(value) } }} aria-label="Transcript view">
-              <ToggleGroupItem value="preview">Markdown</ToggleGroupItem><ToggleGroupItem value="edit">Edit</ToggleGroupItem><ToggleGroupItem value="timestamps">Transcript</ToggleGroupItem>
+              <ToggleGroupItem value="preview"><FileText />Markdown</ToggleGroupItem><ToggleGroupItem value="edit"><Pencil />Edit</ToggleGroupItem><ToggleGroupItem value="timestamps"><ListTree />Transcript</ToggleGroupItem>
             </ToggleGroup>
             {documentMode === 'edit' && (
               <Button size="sm" onClick={() => void saveTranscript()} disabled={action !== null || recording.transcriptText === undefined}><Save />Save version</Button>
@@ -372,17 +396,20 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
                 <textarea className="markdown-editor" aria-label="Transcript Markdown" value={transcriptDraft} onChange={event => setTranscriptDraft(event.target.value)} spellCheck />
               ) : <TranscriptEmpty action={action} onTranscribe={() => void runAction('transcribing')} />
             ) : documentMode === 'timestamps' ? (
-              recording.segments?.length ? (
+              displaySegments.length ? (
                 <div className="segment-list">
-                  {recording.segments.map(segment => (
-                    <button key={segment.id} type="button" className={activeSegment === segment.id ? 'segment-row active' : 'segment-row'} onClick={() => seekTo(segment.startTime)}>
+                  {displaySegments.map(segment => (
+                    <div key={segment.id} className="flex items-start gap-1">
+                    <button type="button" className={`flex-1 min-w-0 ${activeSegment === segment.id ? 'segment-row active' : 'segment-row'}`} onClick={() => seekTo(segment.startTime)}>
                       <span className={`speaker-mark speaker-${(speakerMap.get(segment.speaker) ?? 0) % 6}`} />
                       <span className="segment-time">{formatDuration(segment.startTime)}</span>
                       <span className="segment-copy"><strong>{segment.speaker}</strong>{segment.text}</span>
                     </button>
+                    {!selectedVersion && <SegmentEditor recording={recording} segment={segment} onSaved={loadRecording} />}
+                    </div>
                   ))}
                 </div>
-              ) : <TranscriptEmpty action={action} onTranscribe={() => void runAction('transcribing')} />
+              ) : displayText ? <p className="p-6 text-sm text-muted-foreground">This transcript version has no timestamp data. Its text is available in Markdown.</p> : <TranscriptEmpty action={action} onTranscribe={() => void runAction('transcribing')} />
             ) : displayText ? (
               <div className="markdown-document"><ReactMarkdown remarkPlugins={[remarkGfm]}>{displayText}</ReactMarkdown></div>
             ) : <TranscriptEmpty action={action} onTranscribe={() => void runAction('transcribing')} />}
@@ -390,6 +417,7 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
         </main>
 
         <aside className="recording-inspector">
+          <RecordingBookmarks recordingId={recording.id} currentTime={currentTime} seek={seekTo} />
           <section>
             <div className="inspector-heading"><span>Details</span><button type="button" onClick={() => setEditingMetadata(value => !value)} aria-label="Edit recording details"><Pencil /></button></div>
             {editingMetadata ? (
@@ -397,7 +425,7 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
                 <label>Context<input value={contextDraft} onChange={event => setContextDraft(event.target.value)} placeholder="What was this about?" /></label>
                 <label>Tags<input value={tagsDraft} onChange={event => setTagsDraft(event.target.value)} placeholder="meeting, idea" /></label>
                 <label>Notes<textarea value={notesDraft} onChange={event => setNotesDraft(event.target.value)} rows={5} /></label>
-                <div className="metadata-buttons"><Button size="sm" onClick={() => void saveMetadata()} disabled={action !== null}><Save />Save</Button><Button size="sm" variant="ghost" onClick={() => setEditingMetadata(false)}>Cancel</Button></div>
+                <div className="metadata-buttons"><Button size="sm" onClick={() => void saveMetadata()} disabled={action !== null}><Save />Save</Button><Button size="sm" variant="ghost" onClick={() => setEditingMetadata(false)}><X />Cancel</Button></div>
               </div>
             ) : (
               <dl className="metadata-list">
@@ -415,9 +443,9 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
           </section>
 
           <section>
-            <div className="inspector-heading"><span>Summary</span><Sparkles /></div>
+            <div className="inspector-heading"><span>Summary</span><AlignLeft /></div>
             {recording.summary ? <div className="inspector-summary"><ReactMarkdown remarkPlugins={[remarkGfm]}>{recording.summary}</ReactMarkdown></div> : (
-              <div className="inspector-empty"><p>No summary yet.</p><Button variant="outline" size="sm" onClick={() => void runAction('summarizing')} disabled={action !== null}>{action === 'summarizing' ? <Loader2 className="animate-spin" /> : <Sparkles />}Generate</Button></div>
+              <div className="inspector-empty"><p>No summary yet.</p><Button variant="outline" size="sm" onClick={() => void runAction('summarizing')} disabled={action !== null}>{action === 'summarizing' ? <Loader2 className="animate-spin" /> : <AlignLeft />}Generate</Button></div>
             )}
           </section>
 
@@ -446,7 +474,7 @@ function TranscriptEmpty({ action, onTranscribe }: { action: BusyAction; onTrans
       <FileText />
       <h2>No transcript yet</h2>
       <p>Transcribe this audio with your configured engine, then edit it as Markdown.</p>
-      <Button onClick={onTranscribe} disabled={action !== null}>{action === 'transcribing' ? <Loader2 className="animate-spin" /> : <Sparkles />}Transcribe audio</Button>
+      <Button onClick={onTranscribe} disabled={action !== null}>{action === 'transcribing' ? <Loader2 className="animate-spin" /> : <AudioLines />}Transcribe audio</Button>
     </div>
   )
 }

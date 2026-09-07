@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bluetooth, RefreshCw, Download, Play, Square, UploadCloud, Loader2, Check, Unplug, X, Share2 } from 'lucide-react'
+import { Bluetooth, RefreshCw, Download, Play, Square, UploadCloud, Loader2, Check, Unplug, X, Share2 } from "@/components/icons"
 import { Button } from '@/components/ui/button'
 import { deviceCommand, supportsPlaudDevice, vaultArguments, type DeviceSnapshot } from '@/lib/plaud-device'
 import { formatDuration } from '@/lib/utils'
 import { DesktopPlaud } from './DesktopPlaud'
+import { PhoneAuthorization } from '@/components/PlaudAuthorization'
 
 export function DevicesPage() {
   const supported = supportsPlaudDevice()
@@ -65,7 +66,7 @@ export function DevicesPage() {
       await deviceCommand('download', { sessionId })
       let current = await refresh()
       const deadline = Date.now() + 16 * 60_000
-      while (current.downloading) {
+      while (current.busy) {
         if (queue.current !== attempt) return
         if (Date.now() > deadline) throw new Error('Download status timed out. Reconnect and check the saved recordings.')
         await new Promise(resolve => setTimeout(resolve, 1000))
@@ -91,30 +92,35 @@ export function DevicesPage() {
   })
 
   const localIds = new Set(snapshot?.localRecordings.map(row => row.sourceRecordingId))
-  const connecting = snapshot?.state === 'connecting' || snapshot?.state === 'authenticating'
+  const connecting = snapshot?.busy
   const status = !snapshot ? 'Checking connection...' : snapshot.state === 'ready'
     ? snapshot.listLoaded ? `${snapshot.files.length} on device` : 'Reading recordings...'
     : snapshot?.state === 'connecting' ? 'Authenticating Note Pro...'
       : snapshot?.state === 'scanning' ? 'Searching nearby...'
-        : snapshot?.state === 'authenticating' ? 'Connecting account...' : 'Disconnected'
+        : snapshot?.state === 'authenticating' ? 'Verifying device authorization...' : 'Disconnected'
+
+  if (!supported) return <DesktopPlaud />
 
   return <div className="device-page">
     <header className="device-heading"><div><h1>Plaud</h1><p>Note Pro</p></div><Bluetooth aria-hidden="true" /></header>
-    {!supported ? <DesktopPlaud /> : <>
+    <>
+      {snapshot && !snapshot.configured && <PhoneAuthorization onDone={() => void refresh()} />}
       <section className="device-connection" aria-label="Plaud connection">
         <div><h2>{status}</h2><p>{snapshot?.serial || 'Plaud Note Pro'}{snapshot?.battery != null ? ` · ${snapshot.battery}% battery` : ''}</p></div>
         {snapshot?.state === 'ready' ? <div className="device-actions">
           <Button variant="ghost" size="icon" disabled={!!busy || snapshot.downloading} title="Refresh device recordings" aria-label="Refresh device recordings" onClick={() => void run('Refreshing', () => deviceCommand('refresh'))}><RefreshCw /></Button>
           <Button variant="ghost" size="icon" disabled={!!busy || snapshot.downloading} title="Disconnect device" aria-label="Disconnect device" onClick={() => void run('Disconnecting', () => deviceCommand('disconnect'))}><Unplug /></Button>
-        </div> : <Button disabled={!!busy || connecting} onClick={() => void connect()}>{busy || connecting ? <Loader2 className="animate-spin" /> : <Bluetooth />}Connect</Button>}
+        </div> : <Button disabled={!!busy || connecting || !snapshot?.configured} onClick={() => void connect()}>{busy || connecting ? <Loader2 className="animate-spin" /> : <Bluetooth />}Connect directly</Button>}
       </section>
+      {snapshot?.configured && <label className="device-recording-row"><input type="checkbox" checked={snapshot.autoImport} disabled={!!busy} onChange={e => void run('Updating import settings', async () => { await deviceCommand('permissions'); await deviceCommand('autoImport', { enabled: e.target.checked }) })} /><span><strong>Automatic imports</strong><small>All new completed recordings. Originals retained on Plaud.</small></span></label>}
+      {snapshot?.lastNotice && <p className="device-muted" role="status">{snapshot.lastNotice}</p>}
       {(error || snapshot?.error) && <p className="device-error" role="alert">{error || snapshot?.error}</p>}
       {(snapshot?.state === 'scanning' || snapshot?.state === 'disconnected') && snapshot.devices.map(device => <button key={device.serial} className="device-scan-result" disabled={!!busy} onClick={() => { setSelected([]); void run('Authenticating', () => deviceCommand('connect', { serial: device.serial })) }}>
         <Bluetooth /><span>{device.name}<small>{device.serial}</small></span><span>Connect</span>
       </button>)}
       {snapshot?.state === 'ready' && <section className="device-section">
         <div className="device-section-heading"><h2>On Note Pro</h2><Button size="sm" disabled={!!busy || selected.length === 0 || snapshot.downloading} onClick={() => void downloadSelected()}><Download />Download{selected.length ? ` (${selected.length})` : ''}</Button></div>
-        {!snapshot.listLoaded ? <p className="device-muted">{snapshot.error ? 'Recording list unavailable' : 'Reading device storage...'}</p> : snapshot.files.length === 0 ? <p className="device-muted">No recordings remain on this device.</p> : snapshot.files.map(file => {
+        {!snapshot.listLoaded ? <p className="device-muted">{snapshot.error ? 'Recording list unavailable' : 'Reading device storage...'}</p> : snapshot.files.length === 0 ? <p className="device-muted">No completed recordings returned by the device.</p> : snapshot.files.map(file => {
           const downloaded = localIds.has(`${snapshot.serial}:${file.sessionId}`)
           return <label className="device-recording-row" key={file.sessionId}>
             <input type="checkbox" disabled={downloaded || !!busy || snapshot.downloading} checked={selected.includes(file.sessionId)} onChange={event => setSelected(values => event.target.checked ? [...values, file.sessionId] : values.filter(id => id !== file.sessionId))} />
@@ -134,6 +140,6 @@ export function DevicesPage() {
         </article>)}
         {snapshot?.localRecordings.length === 0 && <p className="device-muted">No downloaded recordings yet.</p>}
       </section>
-    </>}
+    </>
   </div>
 }

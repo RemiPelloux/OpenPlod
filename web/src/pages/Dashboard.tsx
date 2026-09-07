@@ -1,272 +1,538 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { PlaudImportDialog } from '@/components/PlaudImportDialog'
-import { Link } from 'react-router-dom'
-import { Mic, AlertCircle, Search, LayoutGrid, List, Loader2, RefreshCw, Bluetooth, Download, Trash2, RotateCcw, SlidersHorizontal, X, ArrowUpRight } from 'lucide-react'
-import * as Dialog from '@radix-ui/react-dialog'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { api, type Recording, type AvailableRecording } from '@/lib/api'
-import { formatDuration, formatRelativeDate } from '@/lib/utils'
-
-const statusColors: Record<string, 'warning' | 'default' | 'success' | 'destructive'> = {
-  pending: 'warning',
-  transcribing: 'default',
-  complete: 'success',
-  failed: 'destructive',
-}
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
+import {
+  AlertCircle,
+  Bluetooth,
+  FileAudio,
+  LayoutGrid,
+  List,
+  Loader2,
+  Mic,
+  MoreHorizontal,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  SlidersHorizontal,
+  Star,
+  Trash2,
+  Upload,
+  X,
+  MessageSquare,
+  Pencil,
+  ChevronDown,
+  Check,
+  Tags,
+} from "@/components/icons";
+import * as Dialog from "@radix-ui/react-dialog";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import { PlaudImportDialog } from "@/components/PlaudImportDialog";
+import { RecordingPreview } from "@/components/RecordingPreview";
+import { WorkspaceTiles } from "@/components/WorkspaceTiles";
+import { RecordingTagsDialog } from "@/components/RecordingTagsDialog";
+import { Button } from "@/components/ui/button";
+import { api, type Recording } from "@/lib/api";
+import { formatDuration } from "@/lib/utils";
 
 export function Dashboard() {
-  const [recordings, setRecordings] = useState<Recording[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [search, setSearch] = useState('')
-  const [view, setView] = useState<'grid' | 'list'>('list')
-  const [sort, setSort] = useState('newest')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [retention, setRetention] = useState<'active' | 'trash'>('active')
-  const [available, setAvailable] = useState<AvailableRecording[]>([])
-  const [selectedImports, setSelectedImports] = useState<Set<string>>(new Set())
-  const [scanning, setScanning] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [filtersOpen, setFiltersOpen] = useState(false)
-  const loadRevision = useRef(0)
-  const invalidateLoad = useCallback(() => { loadRevision.current++ }, [])
-
-  const loadDashboard = useCallback(async () => {
-    const revision = ++loadRevision.current
-    setLoading(true)
-    setError('')
-    try {
-      const recs = await api.getRecordings({ retention, limit: '100' })
-      if (revision === loadRevision.current) setRecordings(recs)
-    } catch (loadError) {
-      if (revision === loadRevision.current) setError(loadError instanceof Error ? loadError.message : 'Could not load recordings')
-    } finally {
-      if (revision === loadRevision.current) setLoading(false)
-    }
-  }, [retention])
-
+  const [recordings, setRecordings] = useState<Recording[]>([]),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState("");
+  const [view, setView] = useState<"grid" | "list">("list"),
+    [sort, setSort] = useState("newest"),
+    [status, setStatus] = useState("all");
+  const [source, setSource] = useState("all"),
+    [filtersOpen, setFiltersOpen] = useState(false),
+    [query, setQuery] = useState(""),
+    [more, setMore] = useState(false),
+    [selected, setSelected] = useState("");
+  const [params] = useSearchParams(),
+    navigate = useNavigate(),
+    location = useLocation();
+  const retention = params.get("view") === "trash" ? "trash" : "active";
+  const starred = params.get("view") === "starred";
+  const revision = useRef(0);
+  const [tagRecording, setTagRecording] = useState<Recording | null>(null);
+  const [tagRefresh, setTagRefresh] = useState(0);
+  const tagEditorOpen = useRef(false);
+  const tagReturnFocus = useRef<HTMLElement | null>(null);
+  const editTags = (row: Recording) => {
+    tagReturnFocus.current = document.getElementById(`recording-open-${row.id}`);
+    tagEditorOpen.current = true;
+    setTagRecording(row);
+  };
+  const closeTags = () => {
+    tagEditorOpen.current = false;
+    setTagRecording(null);
+    requestAnimationFrame(() => tagReturnFocus.current?.focus());
+  };
+  const [wide, setWide] = useState(
+    () => window.matchMedia("(min-width: 1101px)").matches,
+  );
   useEffect(() => {
-    void loadDashboard()
-    window.addEventListener('plaud:sync-complete', loadDashboard)
-    return () => { invalidateLoad(); window.removeEventListener('plaud:sync-complete', loadDashboard) }
-  }, [loadDashboard, invalidateLoad])
-
+    const media = window.matchMedia("(min-width: 1101px)");
+    const update = () => setWide(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  const invalidate = useCallback(() => {
+    revision.current++;
+  }, []);
+  const load = useCallback(async () => {
+    const ticket = ++revision.current;
+    setLoading(true);
+    setError("");
+    try {
+      const rows = await api.getRecordings({ retention, limit: "100" });
+      if (ticket === revision.current) {
+        setRecordings(rows);
+        setMore(rows.length === 100);
+      }
+    } catch (e) {
+      if (ticket === revision.current) setError((e as Error).message);
+    } finally {
+      if (ticket === revision.current) setLoading(false);
+    }
+  }, [retention]);
   useEffect(() => {
-    let disposed = false
-    const loadFolder = () => api.getAvailableRecordings()
-      .then(rows => { if (!disposed) setAvailable(rows) })
-      .catch(() => { if (!disposed) setAvailable([]) })
-    void loadFolder()
-    window.addEventListener('plaud:sync-complete', loadFolder)
-    return () => { disposed = true; window.removeEventListener('plaud:sync-complete', loadFolder) }
-  }, [])
-
-  const deferredSearch = useDeferredValue(search)
-
-  const filtered = useMemo(() => recordings.filter(r => {
-    if (statusFilter !== 'all' && r.status !== statusFilter) return false
-    if (deferredSearch && !r.title.toLocaleLowerCase().includes(deferredSearch.toLocaleLowerCase())) return false
-    return true
-  }).sort((a, b) => sort === 'title' ? a.title.localeCompare(b.title) : (sort === 'oldest' ? 1 : -1) * (new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())), [deferredSearch, recordings, statusFilter, sort])
-
-  const unimported = available.filter(recording => !recording.imported)
-
-  const scanPlaud = async () => {
-    setScanning(true)
-    setError('')
+    void load();
+    window.addEventListener("plaud:sync-complete", load);
+    return () => {
+      invalidate();
+      window.removeEventListener("plaud:sync-complete", load);
+    };
+  }, [load, invalidate]);
+  const search = useDeferredValue(query.toLocaleLowerCase());
+  const filtered = useMemo(
+    () =>
+      recordings
+        .filter((row) => {
+          if (
+            (starred || source === "starred") &&
+            !row.tags.includes("Starred")
+          )
+            return false;
+          if (source === "plaud" && row.sourceProvider !== "plaud")
+            return false;
+          if (
+            source === "voice" &&
+            !["opennotes", "mobile", "microphone"].includes(
+              row.sourceProvider || "",
+            )
+          )
+            return false;
+          if (
+            source === "imported" &&
+            ["plaud", "opennotes", "mobile", "microphone"].includes(
+              row.sourceProvider || "",
+            )
+          )
+            return false;
+          return (
+            (status === "all" || row.status === status) &&
+            (!search ||
+              `${row.title} ${row.tags.join(" ")}`
+                .toLocaleLowerCase()
+                .includes(search))
+          );
+        })
+        .sort((a, b) =>
+          sort === "title"
+            ? a.title.localeCompare(b.title)
+            : (sort === "oldest" ? 1 : -1) *
+              (Date.parse(a.recordedAt) - Date.parse(b.recordedAt)),
+        ),
+    [recordings, source, starred, status, search, sort],
+  );
+  const activeId =
+    filtered.find((row) => row.id === selected)?.id || filtered[0]?.id;
+  const choose = (id: string) => {
+    setSelected(id);
+    if (window.matchMedia("(max-width: 1100px)").matches)
+      navigate(`/recording/${id}`);
+  };
+  const moreRows = async () => {
+    const ticket = revision.current;
+    setLoading(true);
     try {
-      setAvailable(await api.getAvailableRecordings())
-    } catch (scanError) {
-      setError(scanError instanceof Error ? scanError.message : 'Plaud scan failed')
+      const rows = await api.getRecordings({
+        retention,
+        limit: "100",
+        offset: String(recordings.length),
+      });
+      if (ticket === revision.current) {
+        setRecordings((current) => [...current, ...rows]);
+        setMore(rows.length === 100);
+      }
+    } catch (e) {
+      if (ticket === revision.current) setError((e as Error).message);
     } finally {
-      setScanning(false)
+      if (ticket === revision.current) setLoading(false);
     }
-  }
-
-  const importSelected = async () => {
-    const paths = selectedImports.size > 0 ? Array.from(selectedImports) : unimported.map(recording => recording.path)
-    if (paths.length === 0) return
-    if (!window.confirm(`Import ${paths.length} recording${paths.length === 1 ? '' : 's'} into the OpenPlod vault?`)) return
-    setImporting(true)
-    setError('')
-    try {
-      await api.importRecordings(paths)
-      setSelectedImports(new Set())
-      await loadDashboard()
-      await scanPlaud()
-    } catch (importError) {
-      setError(importError instanceof Error ? importError.message : 'Import failed')
-    } finally {
-      setImporting(false)
-    }
-  }
-
+  };
   const restore = async (id: string) => {
-    try { await api.restoreRecording(id); await loadDashboard() }
-    catch (error) { setError(error instanceof Error ? error.message : 'Restore failed') }
-  }
-
+    try {
+      await api.restoreRecording(id);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   const purge = async (id: string) => {
-    if (!window.confirm('Permanently delete this recording and its audio? This cannot be undone.')) return
-    try { await api.purgeRecording(id); await loadDashboard() }
-    catch (error) { setError(error instanceof Error ? error.message : 'Deletion failed') }
-  }
-
+    if (
+      !window.confirm(
+        "Permanently delete this recording and its audio? This cannot be undone.",
+      )
+    )
+      return;
+    try {
+      await api.purgeRecording(id);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const filters = [
+    { id: "all", label: "All", icon: FileAudio },
+    { id: "voice", label: "Voice", icon: Mic },
+    { id: "plaud", label: "Plaud", icon: Bluetooth },
+    { id: "imported", label: "Imported", icon: Upload },
+    { id: "starred", label: "Starred", icon: Star },
+  ];
   return (
-    <div className="library-page">
-      <div className="library-heading">
-        <div>
-          <h1>Recordings</h1>
-        </div>
-        <div className="library-heading-actions"><PlaudImportDialog /></div>
-      </div>
-
-      <div className="library-controls">
-        <ToggleGroup type="single" value={retention} onValueChange={value => { if (value === 'active' || value === 'trash') setRetention(value) }} aria-label="Recording library">
-          <ToggleGroupItem value="active"><Mic />All recordings</ToggleGroupItem>
-          <ToggleGroupItem value="trash"><Trash2 />Trash</ToggleGroupItem>
-        </ToggleGroup>
-        <span className="library-results">{loading ? 'Loading' : `${filtered.length} shown`}</span>
-      </div>
-      <div className="library-tools">
-        <div className="library-search">
-          <Search />
-          <Input
-            placeholder="Search recordings"
-            aria-label="Search recordings"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-        <Button variant={statusFilter === 'all' ? 'outline' : 'secondary'} size="icon" className="size-9 shrink-0" onClick={() => setFiltersOpen(true)} aria-label="Filter recordings" title="Filter recordings">
-          <SlidersHorizontal />
-        </Button>
-        <select className="library-sort" aria-label="Sort recordings" value={sort} onChange={event => setSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="title">Title A-Z</option></select>
-        <ToggleGroup type="single" size="sm" variant="outline" className="library-layout-toggle" value={view} onValueChange={value => { if (value === 'list' || value === 'grid') setView(value) }} aria-label="Recording layout">
-          <ToggleGroupItem value="list" aria-label="List view" title="List view"><List /></ToggleGroupItem>
-          <ToggleGroupItem value="grid" aria-label="Grid view" title="Grid view"><LayoutGrid /></ToggleGroupItem>
-        </ToggleGroup>
-      </div>
-
-      {retention === 'active' && available.length > 0 && (
-        <section className="plaud-inbox" aria-labelledby="plaud-import-heading">
-          <div className="plaud-inbox-content">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="plaud-inbox-copy">
-                <span className="plaud-inbox-icon"><Bluetooth aria-hidden="true" /></span>
-                <div>
-                <h2 id="plaud-import-heading">Folder imports</h2>
-                <p className="text-sm text-muted-foreground">
-                  {unimported.length > 0 ? `${unimported.length} file${unimported.length === 1 ? '' : 's'} ready to import from the configured folder.` : 'All files in this folder are already in the vault.'}
-                </p>
-                </div>
-              </div>
-              <div className="plaud-inbox-actions">
-                <Button variant="ghost" size="sm" onClick={() => void scanPlaud()} disabled={scanning}>
-                  {scanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                  Refresh folder
-                </Button>
-                  <Button size="sm" onClick={() => void importSelected()} disabled={importing || unimported.length === 0}>
-                    {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                    Import {selectedImports.size || unimported.length || ''}
-                  </Button>
+    <div className="studio-page">
+      {location.pathname === "/" && retention === "active" && !starred && (
+        <WorkspaceTiles />
+      )}
+      <div
+        className={`studio-columns ${retention === "trash" ? "trash-layout" : ""}`}
+      >
+        <section className="studio-library" aria-label="Recording library">
+          <header className="studio-library-heading">
+            <div>
+              <h1>
+                {retention === "trash"
+                  ? "Trash"
+                  : starred
+                    ? "Starred"
+                    : "Recordings"}
+              </h1>
+              <p>
+                {loading && !recordings.length
+                  ? "Loading recordings..."
+                  : `${filtered.length}${more ? "+" : ""} recording${filtered.length === 1 ? "" : "s"}`}
+              </p>
+            </div>
+            <PlaudImportDialog />
+          </header>
+          <div className="studio-library-toolbar">
+            <div
+              className="studio-source-tabs"
+              role="tablist"
+              aria-label="Recording source"
+            >
+              {filters.map(({ id, label, icon: Icon }, index) => (
+                <button
+                  key={id}
+                  id={`source-tab-${id}`}
+                  role="tab"
+                  aria-label={label}
+                  title={label}
+                  aria-selected={source === id}
+                  tabIndex={source === id ? 0 : -1}
+                  onClick={() => setSource(id)}
+                  onKeyDown={event => {
+                    const next = event.key === 'ArrowRight' ? (index + 1) % filters.length : event.key === 'ArrowLeft' ? (index + filters.length - 1) % filters.length : event.key === 'Home' ? 0 : event.key === 'End' ? filters.length - 1 : null
+                    if (next === null) return
+                    event.preventDefault(); setSource(filters[next].id); document.getElementById(`source-tab-${filters[next].id}`)?.focus()
+                  }}
+                >
+                  <Icon />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="studio-sort-tools">
+              <button
+                className="studio-control"
+                onClick={() => setFiltersOpen(true)}
+                aria-label="Filter recordings"
+              >
+                <SlidersHorizontal />
+                <span>Filters</span>
+              </button>
+              <select
+                aria-label="Sort recordings"
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="title">Title A-Z</option>
+              </select>
+              <div className="studio-view-toggle">
+                <button
+                  aria-label="List view"
+                  aria-pressed={view === "list"}
+                  onClick={() => setView("list")}
+                >
+                  <List />
+                </button>
+                <button
+                  aria-label="Grid view"
+                  aria-pressed={view === "grid"}
+                  onClick={() => setView("grid")}
+                >
+                  <LayoutGrid />
+                </button>
               </div>
             </div>
-            {unimported.length > 0 && (
-              <div className="plaud-files">
-                {unimported.slice(0, 8).map(recording => (
-                  <label key={recording.fingerprint}>
-                    <input
-                      type="checkbox"
-                      checked={selectedImports.has(recording.path)}
-                      onChange={() => setSelectedImports(current => {
-                        const next = new Set(current)
-                        if (next.has(recording.path)) next.delete(recording.path)
-                        else next.add(recording.path)
-                        return next
-                      })}
-                    />
-                    <span className="min-w-0 flex-1 truncate">{recording.filename}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(recording.modifiedAt).toLocaleString()}
-                      {recording.durationMs !== null ? ` · ${formatDuration(recording.durationMs / 1000)}` : ''}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
           </div>
+          {error && (
+            <div className="studio-error" role="alert">
+              <AlertCircle />
+              <p>{error}</p>
+              <Button variant="ghost" onClick={() => void load()}>
+                <RefreshCw />
+                Retry
+              </Button>
+            </div>
+          )}
+          {loading && !recordings.length ? (
+            <div className="preview-empty">
+              <Loader2 className="animate-spin" />
+            </div>
+          ) : !filtered.length && !error ? (
+            <div className="studio-empty">
+              <FileAudio />
+              <h2>
+                {search || source !== "all" || status !== "all"
+                  ? "No matching recordings"
+                  : retention === "trash"
+                    ? "Trash is empty"
+                    : "No recordings yet"}
+              </h2>
+              {retention === "trash" ? (
+                <p>Deleted recordings remain recoverable for 30 days.</p>
+              ) : (
+                <Button asChild variant="outline">
+                  <Link to="/record">
+                    <Mic />
+                    New recording
+                  </Link>
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div
+              className={`studio-recordings ${view === "grid" ? "studio-grid" : ""}`}
+            >
+              {filtered.map((row) => (
+                <ContextMenu.Root key={row.id}>
+                <ContextMenu.Trigger asChild disabled={retention === "trash"}>
+                <article
+                  data-recording-id={row.id}
+                  className={`studio-recording ${activeId === row.id && retention === "active" ? "selected" : ""}`}
+                >
+                  <button
+                    id={`recording-open-${row.id}`}
+                    className="studio-row-main"
+                    onClick={() => choose(row.id)}
+                    aria-label={`Open ${row.title}`}
+                    aria-pressed={activeId === row.id}
+                  >
+                    <span className="studio-source-icon">
+                      {row.sourceProvider === "plaud" ? (
+                        <FileAudio />
+                      ) : ["opennotes", "mobile", "microphone"].includes(
+                          row.sourceProvider || "",
+                        ) ? (
+                        <Mic />
+                      ) : (
+                        <Play />
+                      )}
+                    </span>
+                    <strong>{row.title}</strong>
+                  </button>
+                  <div className="studio-row-tags">
+                    {(row.tags.filter((tag) => tag !== "Starred").length
+                      ? row.tags.filter((tag) => tag !== "Starred")
+                      : [
+                          row.sourceProvider === "plaud"
+                            ? "Plaud"
+                            : row.recordingType === 'other' ? 'Imported' : row.recordingType,
+                        ]
+                    )
+                      .slice(0, 2)
+                      .map((tag) => (
+                        <span key={tag}>{tag}</span>
+                      ))}
+                  </div>
+                  <time dateTime={row.recordedAt}>
+                    {new Date(row.recordedAt).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </time>
+                  <span className="studio-row-duration">
+                    {formatDuration(row.duration)}
+                  </span>
+                  <div className="studio-row-actions">
+                    {retention === "trash" ? (
+                      <>
+                        <button
+                          title="Restore recording"
+                          aria-label={`Restore ${row.title}`}
+                          onClick={() => void restore(row.id)}
+                        >
+                          <RotateCcw />
+                        </button>
+                        <button
+                          title="Permanently delete"
+                          aria-label={`Permanently delete ${row.title}`}
+                          onClick={() => void purge(row.id)}
+                        >
+                          <Trash2 />
+                        </button>
+                      </>
+                    ) : (
+                      <DropdownMenu.Root>
+                        <DropdownMenu.Trigger
+                          aria-label={`Actions for ${row.title}`}
+                          title="Recording actions"
+                        >
+                          <MoreHorizontal />
+                        </DropdownMenu.Trigger>
+                        <DropdownMenu.Portal>
+                          <DropdownMenu.Content className="action-menu" align="end" sideOffset={6} onCloseAutoFocus={event => { if (tagEditorOpen.current) event.preventDefault(); }}>
+                            <DropdownMenu.Item onSelect={() => choose(row.id)}>
+                              <Play />Open preview
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item onSelect={() => editTags(row)}>
+                              <Tags />Edit tags
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item asChild>
+                              <Link to={`/recording/${row.id}`}>
+                                <Pencil />Edit recording
+                              </Link>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                              onSelect={() =>
+                                navigate(`/ai?recording=${row.id}`)
+                              }
+                            >
+                              <MessageSquare />Ask AI
+                            </DropdownMenu.Item>
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Portal>
+                      </DropdownMenu.Root>
+                    )}
+                  </div>
+                </article>
+                </ContextMenu.Trigger>
+                <ContextMenu.Portal>
+                  <ContextMenu.Content className="action-menu" onCloseAutoFocus={event => { if (tagEditorOpen.current) event.preventDefault(); }}>
+                    <ContextMenu.Item onSelect={() => choose(row.id)}><Play />Open preview</ContextMenu.Item>
+                    <ContextMenu.Item onSelect={() => editTags(row)}><Tags />Edit tags</ContextMenu.Item>
+                    <ContextMenu.Item onSelect={() => navigate(`/recording/${row.id}`)}><Pencil />Edit recording</ContextMenu.Item>
+                    <ContextMenu.Item onSelect={() => navigate(`/ai?recording=${row.id}`)}><MessageSquare />Ask AI</ContextMenu.Item>
+                  </ContextMenu.Content>
+                </ContextMenu.Portal>
+                </ContextMenu.Root>
+              ))}
+            </div>
+          )}
+          {more && (
+            <Button
+              className="studio-load-more"
+              variant="ghost"
+              disabled={loading}
+              onClick={() => void moreRows()}
+            >
+              <ChevronDown />Load more recordings
+            </Button>
+          )}
         </section>
-      )}
-
+        {wide &&
+          (activeId && retention === "active" ? (
+            <RecordingPreview
+              key={activeId}
+              id={activeId}
+              metadataRefresh={tagRefresh}
+              onUpdated={() => void load()}
+            />
+          ) : (
+            retention === "active" && (
+              <div className="studio-preview-empty">
+                <FileAudio />
+                <p>Select a recording</p>
+              </div>
+            )
+          ))}
+      </div>
+      {tagRecording && <RecordingTagsDialog recording={tagRecording} onClose={closeTags} onSaved={updated => {
+        invalidate();
+        setRecordings(current => current.map(row => row.id === updated.id ? { ...row, ...updated } : row));
+        setLoading(false);
+        setTagRefresh(value => value + 1);
+      }} />}
       <Dialog.Root open={filtersOpen} onOpenChange={setFiltersOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="mobile-filter-overlay" />
-          <Dialog.Content className="mobile-filter-sheet" aria-describedby={undefined}>
+          <Dialog.Content
+            className="mobile-filter-sheet"
+            aria-describedby={undefined}
+          >
             <div className="flex items-center justify-between">
-              <Dialog.Title className="text-lg font-semibold">Filter recordings</Dialog.Title>
-              <Dialog.Close asChild>
-                <Button variant="ghost" size="icon" aria-label="Close filters" title="Close filters"><X className="h-4 w-4" /></Button>
+              <Dialog.Title>Filter recordings</Dialog.Title>
+              <Dialog.Close aria-label="Close filters">
+                <X />
               </Dialog.Close>
             </div>
-            <ToggleGroup type="single" orientation="vertical" className="filter-options" value={statusFilter} onValueChange={value => { if (value) setStatusFilter(value) }} aria-label="Recording status">
-              {['all', 'complete', 'pending', 'transcribing', 'failed'].map(status => (
-                <ToggleGroupItem key={status} value={status}>
-                  <span className="capitalize">{status}</span>
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-            <Dialog.Close asChild><Button className="w-full">Show recordings</Button></Dialog.Close>
+            <label className="studio-filter-label">
+              Title or tag
+              <input
+                aria-label="Filter by title or tag"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </label>
+            <label className="studio-filter-label">
+              Processing status
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                {["all", "complete", "pending", "transcribing", "failed"].map(
+                  (value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+            <Dialog.Close asChild>
+              <Button><Check />Show recordings</Button>
+            </Dialog.Close>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
-
-      {/* Recording List */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : error ? (
-        <div className="flex flex-col items-center py-20 text-center text-muted-foreground" role="alert">
-          <AlertCircle className="mb-3 h-10 w-10 opacity-40" />
-          <p className="font-medium text-foreground">Could not load recordings</p>
-          <p className="mt-1 max-w-md text-sm">{error}</p>
-          <Button variant="outline" size="sm" className="mt-4 gap-2" onClick={() => void loadDashboard()}>
-            <RefreshCw className="h-4 w-4" /> Retry
-          </Button>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="library-empty">
-          {retention === 'trash' ? <Trash2 /> : <Mic />}
-          <h2>{search || statusFilter !== 'all' ? 'No matching recordings' : retention === 'trash' ? 'Trash is empty' : 'No recordings yet'}</h2>
-          {search || statusFilter !== 'all' ? <Button variant="outline" onClick={() => { setSearch(''); setStatusFilter('all') }}>Clear filters</Button> : retention === 'active' ? <Button asChild><Link to="/record"><Mic />New recording</Link></Button> : <p className="text-sm text-muted-foreground">Deleted recordings remain recoverable for 30 days.</p>}
-        </div>
-      ) : (
-        <div className={view === 'list' ? 'recording-list' : 'library-grid'}>
-          {view === 'list' && <div className="recording-table-head" data-trash={retention === 'trash'} aria-hidden="true"><span>Recording</span><span>Recorded</span><span>Duration</span><span>Transcript</span><span /></div>}
-          {filtered.map(r => (
-            <article key={r.id} className={view === 'list' ? 'recording-table-row' : 'recording-grid-item'} data-trash={retention === 'trash'}>
-              <Link to={`/recording/${r.id}`} className="recording-row-link">
-                <span className="recording-source-icon">{r.sourceProvider === 'plaud' ? <Bluetooth /> : <Mic />}</span>
-                <span className="recording-row-copy"><strong>{r.title}</strong><small>{r.sourceProvider === 'plaud' ? 'Plaud' : 'Audio recording'}</small></span>
-              </Link>
-              <span className="recording-date">{formatRelativeDate(r.recordedAt)}</span>
-              <span className="recording-duration">{formatDuration(r.duration)}</span>
-              <div className="recording-state"><Badge variant={statusColors[r.status]}>{r.status === 'complete' ? 'Ready' : r.status === 'pending' ? 'Not started' : r.status}</Badge></div>
-              {view === 'grid' && r.summary && <p className="recording-grid-summary">{r.summary}</p>}
-              <div className="recording-row-actions">
-                {retention === 'trash' ? <>
-                  <Button variant="ghost" size="icon" className="size-8" onClick={() => void restore(r.id)} aria-label={`Restore ${r.title}`} title="Restore recording"><RotateCcw /></Button>
-                  <Button variant="ghost" size="icon" className="size-8" onClick={() => void purge(r.id)} aria-label={`Permanently delete ${r.title}`} title="Permanently delete recording"><Trash2 /></Button>
-                </> : <Button asChild variant="ghost" size="icon" className="size-8"><Link to={`/recording/${r.id}`} aria-label={`Open ${r.title}`} title="Open recording"><ArrowUpRight /></Link></Button>}
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
     </div>
-  )
+  );
 }

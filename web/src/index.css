@@ -81,7 +81,7 @@
   --shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
 }
 
-* { border-color: var(--border); }
+@layer base { * { border-color: var(--border); } }
 
 html, body, #root { min-height: 100%; }
 
@@ -243,10 +243,10 @@ button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid
 .capture-ready { gap: 28px; }
 .capture-ready h1, .capture-stored h1 { margin: 0; font-size: 28px; font-weight: 600; line-height: 1.2; }
 .capture-ready p, .capture-stored p { max-width: 380px; margin: 10px auto 0; color: var(--muted-foreground); font-size: 14px; line-height: 1.55; }
-.capture-orbit { display: flex; width: 112px; height: 112px; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border)); border-radius: 50%; background: color-mix(in srgb, var(--primary) 6%, var(--card)); color: var(--primary); box-shadow: 0 0 0 18px color-mix(in srgb, var(--primary) 4%, transparent), 0 0 0 36px color-mix(in srgb, var(--primary) 2%, transparent); }
+.capture-orbit { display: flex; width: 112px; height: 112px; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 50%; background: transparent; color: var(--foreground); }
 .capture-orbit svg { width: 34px; height: 34px; }
-.record-trigger { display: flex; width: 82px; height: 82px; align-items: center; justify-content: center; border: 7px solid color-mix(in srgb, var(--primary) 16%, var(--card)); border-radius: 50%; background: var(--primary); color: var(--primary-foreground); box-shadow: 0 12px 30px color-mix(in srgb, var(--primary) 28%, transparent); transition: transform 150ms var(--ease-out), box-shadow 150ms var(--ease-out); }
-.record-trigger:active { transform: scale(0.94); box-shadow: 0 7px 18px color-mix(in srgb, var(--primary) 22%, transparent); }
+.record-trigger { display: flex; width: 82px; height: 82px; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: #c84949; color: #fff; transition: transform 120ms var(--ease-out); }
+.record-trigger:active { transform: scale(0.97); }
 .record-trigger svg { width: 28px; height: 28px; }
 .capture-live { gap: 22px; }
 .capture-state { display: inline-flex; align-items: center; gap: 8px; color: var(--muted-foreground); font-size: 13px; font-weight: 650; }
@@ -258,7 +258,7 @@ button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid
 .capture-controls { display: flex; align-items: center; gap: 38px; margin-top: 8px; }
 .capture-control { display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: transform 130ms var(--ease-out), background-color 130ms var(--ease-out); }
 .capture-control.secondary { width: 54px; height: 54px; background: var(--secondary); color: var(--foreground); }
-.capture-control.stop { width: 76px; height: 76px; background: var(--primary); color: var(--primary-foreground); box-shadow: 0 10px 26px color-mix(in srgb, var(--primary) 24%, transparent); }
+.capture-control.stop { width: 76px; height: 76px; background: #c84949; color: #fff; }
 .capture-control.stop svg { width: 22px; height: 22px; fill: currentColor; }
 .capture-review { gap: 18px; }
 .capture-source { display: inline-flex; align-items: center; align-self: center; gap: 8px; color: var(--primary); font-size: 13px; font-weight: 650; }
@@ -292,9 +292,13 @@ button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid
 .recording-toolbar-actions button svg { width: 15px; height: 15px; }
 .saved-state { display: inline-flex; align-items: center; gap: 5px; margin-right: 4px; color: var(--positive); font-size: 11px; font-weight: 650; }
 .saved-state svg { width: 14px; height: 14px; }
-.action-menu { z-index: 100; min-width: 200px; overflow: hidden; border: 1px solid var(--border); border-radius: 7px; background: var(--popover); padding: 5px; color: var(--popover-foreground); box-shadow: var(--shadow); }
-.action-menu [role="menuitem"] { display: flex; min-height: 38px; cursor: pointer; align-items: center; gap: 9px; border-radius: 5px; padding: 0 10px; outline: none; font-size: 13px; }
-.action-menu [role="menuitem"][data-highlighted] { background: var(--secondary); }
+.action-menu { z-index: 100; min-width: 168px; max-width: calc(100vw - 16px); max-height: var(--radix-dropdown-menu-content-available-height, var(--radix-context-menu-content-available-height)); overflow-y: auto; border: 1px solid var(--border); border-radius: 7px; background: var(--popover); padding: 5px; color: var(--popover-foreground); box-shadow: var(--shadow); }
+.action-menu :is([role="menuitem"], [role="menuitemradio"]) { display: flex; min-height: 34px; cursor: pointer; align-items: center; gap: 9px; border-radius: 4px; padding: 0 10px; outline: none; font-size: 13px; }
+.action-menu :is([role="menuitem"], [role="menuitemradio"])[data-highlighted] { background: var(--secondary); }
+.action-menu [data-disabled] { opacity: 0.45; pointer-events: none; }
+.action-menu-label { padding: 6px 10px; color: var(--muted-foreground); font-size: 12px; }
+.action-menu-indicator { display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; }
+@media (pointer: coarse) { .action-menu :is([role="menuitem"], [role="menuitemradio"]) { min-height: 44px; } }
 .action-menu [role="menuitem"].danger { color: var(--destructive); }
 .action-menu svg { width: 16px; height: 16px; }
 .action-menu [role="separator"] { height: 1px; margin: 5px; background: var(--border); }
@@ -459,7 +463,7 @@ button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid
   .recording-toolbar-actions .saved-state { margin-right: auto; }
   .player-strip { min-height: 100px; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; padding: 13px 15px; }
   .player-main { width: 42px !important; height: 42px !important; }
-  .player-skip { display: none; }
+  .player-skip { display: flex; grid-column: 1 / -1; justify-content: flex-end; align-items: center; }
   .recording-workspace { display: flex; min-height: 0; flex-direction: column; }
   .document-pane { border-right: 0; }
   .document-toolbar { min-height: 54px; padding: 9px 14px; }

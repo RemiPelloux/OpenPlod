@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { Save, Loader2, AlertCircle, Copy, Monitor, Smartphone, Unplug } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
+import { Save, Loader2, AlertCircle, Copy, Monitor, Smartphone, Unplug } from "@/components/icons"
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { api, type Settings } from '@/lib/api'
 import { forgetMobilePairing, getRuntime } from '@/lib/runtime'
 import { QRCodeSVG } from 'qrcode.react'
+import { buildInfo, buildLabel } from '@/lib/build-info'
 
 function Toggle({ checked, onChange, label, description }: { checked: boolean; onChange: (v: boolean) => void; label: string; description: string }) {
   return (
@@ -35,6 +37,14 @@ const engines = [
 ]
 
 export function SettingsPage() {
+  const { hash } = useLocation()
+  const pairingSection = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    if (hash === '#pairing' && pairingSection.current) {
+      pairingSection.current.open = true
+      pairingSection.current.scrollIntoView({ block: 'start' })
+    }
+  }, [hash])
   const runtime = getRuntime()
   const pairingPayload = runtime.mode === 'desktop' && runtime.lanAddress
     ? JSON.stringify({ type: 'openplod-pairing', version: 1, origin: runtime.lanAddress, token: runtime.pairingToken })
@@ -108,6 +118,11 @@ export function SettingsPage() {
       )}
 
       <details className="border-b pb-4">
+        <summary className="cursor-pointer text-sm text-muted-foreground">About OpenPlod</summary>
+        <dl className="grid gap-3 py-4 text-sm"><div><dt className="text-muted-foreground">Version</dt><dd>{buildInfo.version}</dd></div><div><dt className="text-muted-foreground">Installed build</dt><dd><time dateTime={buildInfo.builtAt}>{buildLabel}</time></dd></div><div><dt className="text-muted-foreground">Platform</dt><dd>{runtime.mode === 'desktop' ? 'Desktop' : runtime.mode === 'mobile' ? 'Mobile' : 'Browser'}</dd></div></dl>
+      </details>
+
+      <details id="pairing" ref={pairingSection} className="border-b pb-4">
         <summary className="cursor-pointer text-sm text-muted-foreground">Mobile pairing</summary>
       <Card className="mt-4">
         <CardHeader className="pb-3">

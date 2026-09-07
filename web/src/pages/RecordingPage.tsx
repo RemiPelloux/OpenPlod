@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, FileAudio, Loader2, Mic, Pause, Play, RotateCcw, Square, UploadCloud, WifiOff, X } from 'lucide-react'
+import { ArrowLeft, Check, FileAudio, Loader2, Mic, Pause, Play, RotateCcw, Square, UploadCloud, WifiOff, X } from "@/components/icons"
 import { Button } from '@/components/ui/button'
 import { PlaudImportDialog } from '@/components/PlaudImportDialog'
 import { Input } from '@/components/ui/input'

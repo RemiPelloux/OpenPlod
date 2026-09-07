@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowRight, Keyboard, Loader2, Radio, ScanLine, ShieldCheck, X } from 'lucide-react'
+import { ArrowRight, Keyboard, Loader2, Radio, ScanLine, ShieldCheck, X } from "@/components/icons"
 import { Brand } from '@/components/Brand'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'

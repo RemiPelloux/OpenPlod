@@ -1,11 +1,10 @@
-import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { ArrowLeft, Check, Copy, Download, FilePlus2, FileText, Folder, FolderPlus, History, Inbox, Loader2, MoreHorizontal, NotebookPen, Pencil, RefreshCw, RotateCcw, Save, Search, Send, Star, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Download, FilePlus2, FileText, Folder, FolderPlus, History, Inbox, Loader2, MoreHorizontal, NotebookPen, Pencil, RefreshCw, RotateCcw, Save, Search, Send, Sparkles, Star, Trash2, Upload, X } from "@/components/icons"
 import { Button } from '@/components/ui/button'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { IconButton } from '@/components/ui/icon-button'
+import { DocumentCanvas } from '@/components/DocumentCanvas'
 import { FolderSelect, NoteDialog, SendNoteDialog } from '@/components/NoteDialogs'
 import { notesApi, folderPaths, type NoteFolder, type NoteDocument, type NotePage, type NoteVersion } from '@/lib/notes-api'
 import { exportDocument, safeDocumentName } from '@/lib/document-export'
@@ -42,7 +41,6 @@ export function NotesPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const importRef = useRef<HTMLInputElement>(null)
-  const deferredContent = useDeferredValue(content)
   const dirty = !!document && (title !== document.title || content !== document.content || folderDraft !== (document.folderId || ''))
   const selectedFolder = folders.find(folder => folder.id === view)
   const targetFolder = selectedFolder?.id || null
@@ -139,7 +137,7 @@ export function NotesPage() {
     })
   }
   const save = () => {
-    if (!document) return
+    if (!document || busy || !dirty || !title.trim() || document.deletedAt) return
     void mutate(async () => {
       applyDocument(await notesApi.update(document.id, { title, content, folderId: folderDraft || null, revision: document.revision }))
       setNotice('Note saved')
@@ -170,15 +168,15 @@ export function NotesPage() {
   }
 
   return <div className="notes-workspace" data-document={!!selectedId}>
-    <header className="notes-heading"><div><h1>Documents</h1></div><div>
-      <Button asChild variant="ghost" size="sm"><Link to="/transcripts"><FileText />Transcripts</Link></Button>
-      <Button size="icon" variant="outline" title="Import Markdown" aria-label="Import Markdown" disabled={busy} onClick={() => importRef.current?.click()}><Upload /></Button>
-      <Button size="sm" disabled={busy} onClick={createNote}><FilePlus2 />New note</Button>
-    </div></header>
     <input type="file" ref={importRef} multiple accept=".md,.markdown,text/markdown" className="sr-only" onChange={event => { const files = [...(event.target.files || [])]; event.target.value = ''; void importFiles(files) }} />
     {error && <div className="notes-message note-error" role="alert"><span>{error}</span><button type="button" onClick={() => setError('')} aria-label="Dismiss error"><X /></button></div>}
     {notice && <div className="notes-message" role="status"><Check /><span>{notice}</span></div>}
     <div className="notes-columns">
+      <header className="notes-heading"><div><h1>Documents</h1></div><div>
+        <IconButton asChild label="Open transcripts"><Link to="/transcripts"><FileText /></Link></IconButton>
+        <IconButton label="Import Markdown" disabled={busy} onClick={() => importRef.current?.click()}><Upload /></IconButton>
+        <Button size="sm" disabled={busy} onClick={createNote}><FilePlus2 />New note</Button>
+      </div></header>
       <aside className={`notes-folders ${sidebarOpen ? 'is-open' : ''}`} aria-label="Note folders">
         <div className="notes-folders-title"><span>Workspace</span><Button size="icon" variant="ghost" title="New folder" aria-label="New folder" disabled={busy} onClick={() => setFolderDialog('new')}><FolderPlus /></Button></div>
         {([{ id: 'all', name: 'All notes', icon: NotebookPen }, { id: 'inbox', name: 'Inbox', icon: Inbox }, { id: 'starred', name: 'Starred', icon: Star }] as const).map(({ id, name, icon: Icon }) =>
@@ -197,37 +195,41 @@ export function NotesPage() {
         <select className="notes-sort" aria-label="Sort notes" value={sort} onChange={event => { setSort(event.target.value); setOffset(0) }}><option value="updated">Last edited</option><option value="title">Title A to Z</option></select>
         <div className="notes-list-items" aria-busy={loading}>
           {loading ? <div className="notes-empty" role="status"><Loader2 className="animate-spin" />Loading notes</div> : page.documents.map(note => <button type="button" key={note.id} className={`notes-list-item ${selectedId === note.id ? 'selected' : ''}`} onClick={() => selectDocument(note.id)}>
-            <div><FileText /><strong>{note.title}</strong>{note.starred && <Star className="note-star" />}</div><p>{note.excerpt || 'Empty note'}</p><small>{shortDate(note.updatedAt)}<span>{note.sourceRecordingId ? 'Transcript' : 'Markdown'}</span></small>
+            <FileText className="notes-list-file" /><div className="notes-list-copy"><div><strong>{note.title}</strong>{note.starred && <Star className="note-star" />}</div><p>{note.excerpt || 'Empty note'}</p><small>{shortDate(note.updatedAt)}<span>{note.sourceRecordingId ? 'Transcript' : 'Markdown'}</span></small></div>
           </button>)}
           {!loading && page.documents.length === 0 && <div className="notes-empty"><FileText /><p>{view === 'trash' ? 'Trash is empty' : query ? 'No matching notes' : 'No notes here yet'}</p>{view !== 'trash' && !query && <Button size="sm" variant="outline" onClick={createNote}><FilePlus2 />New note</Button>}</div>}
         </div>
-        {page.total > page.limit && <footer className="notes-pagination"><Button size="sm" variant="ghost" disabled={offset === 0 || loading} onClick={() => setOffset(value => Math.max(0, value - page.limit))}>Previous</Button><span>{Math.floor(offset / page.limit) + 1} / {Math.ceil(page.total / page.limit)}</span><Button size="sm" variant="ghost" disabled={offset + page.limit >= page.total || loading} onClick={() => setOffset(value => value + page.limit)}>Next</Button></footer>}
+        {page.total > page.limit && <footer className="notes-pagination"><Button size="icon" variant="ghost" aria-label="Previous page" title="Previous page" disabled={offset === 0 || loading} onClick={() => setOffset(value => Math.max(0, value - page.limit))}><ChevronLeft /></Button><span>{Math.floor(offset / page.limit) + 1} / {Math.ceil(page.total / page.limit)}</span><Button size="icon" variant="ghost" aria-label="Next page" title="Next page" disabled={offset + page.limit >= page.total || loading} onClick={() => setOffset(value => value + page.limit)}><ChevronRight /></Button></footer>}
       </section>
       <section className="notes-editor" aria-label="Note editor">
         {documentLoading ? <div className="notes-empty" role="status"><Loader2 className="animate-spin" />Opening note</div> : document && document.id === selectedId ? <>
-          <div className="notes-document-toolbar"><Button size="icon" variant="ghost" title="Back to notes" aria-label="Back to notes" onClick={() => selectDocument('')}><ArrowLeft /></Button>
-            <ToggleGroup type="single" size="sm" className="notes-mode" value={mode} onValueChange={value => { if (value === 'edit' || value === 'preview') setMode(value) }} aria-label="Document mode"><ToggleGroupItem value="preview">Read</ToggleGroupItem><ToggleGroupItem value="edit" disabled={!!document.deletedAt}>Edit</ToggleGroupItem></ToggleGroup>
-            <span className="notes-save-state">{busy ? 'Saving...' : dirty ? 'Unsaved' : 'Saved'}</span>
-            <Button size="icon" variant="ghost" title="Reload saved note" aria-label="Reload saved note" disabled={busy} onClick={() => { if (canLeave()) void mutate(async () => applyDocument(await notesApi.get(document.id))) }}><RefreshCw /></Button>
-            <Button size="icon" title="Save note" aria-label="Save note" disabled={busy || !dirty || !!document.deletedAt || !title.trim()} onClick={save}><Save /></Button>
-          </div>
+          <header className="notes-document-heading">
+            <IconButton className="notes-back" label="Back to notes" onClick={() => selectDocument('')}><ArrowLeft /></IconButton>
+            <div className="notes-document-identity"><div><input className="notes-title-input" aria-label="Note title" value={title} maxLength={180} disabled={busy || !!document.deletedAt} onChange={event => setTitle(event.target.value)} />
+              <IconButton label={document.starred ? 'Unstar note' : 'Star note'} disabled={busy || dirty || !!document.deletedAt} onClick={() => void mutate(async () => applyDocument(await notesApi.update(document.id, { starred: !document.starred, revision: document.revision })))}><Star className={document.starred ? 'note-star' : ''} /></IconButton></div>
+              <div className="notes-document-meta"><time dateTime={document.updatedAt}>Edited {shortDate(document.updatedAt)}</time><span>Revision {document.revision}</span>{document.sourceOrigin?.startsWith('ai:mistral:') && <span>Mistral</span>}</div>
+            </div>
+            <div className="notes-document-commands">
+              <span className="notes-save-state" data-dirty={dirty} role="status">{busy ? <Loader2 className="animate-spin" /> : dirty ? <Pencil /> : <Check />}{busy ? 'Saving...' : dirty ? 'Unsaved' : 'Saved'}</span>
+              <IconButton label="Save note" variant={dirty ? 'default' : 'ghost'} disabled={busy || !dirty || !!document.deletedAt || !title.trim()} onClick={save}><Save /></IconButton>
+              <IconButton label="Send note" disabled={dirty || busy || !!document.deletedAt} onClick={() => setSendOpen(true)}><Send /></IconButton>
+              <DropdownMenu.Root><DropdownMenu.Trigger asChild><Button size="sm" variant="outline" aria-label="Export note" disabled={dirty || busy}><Download /><span>Export</span><ChevronDown /></Button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="action-menu" align="end"><DropdownMenu.Item onSelect={() => exportNote('md')}><FileText />Markdown file</DropdownMenu.Item><DropdownMenu.Item onSelect={() => exportNote('json')}><FileText />JSON with metadata</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>
+              {document.sourceRecordingId && <Button asChild size="sm" className="notes-ask-ai"><Link to={`/ai?recording=${document.sourceRecordingId}`}><Sparkles /><span>Ask AI</span></Link></Button>}
+              <DropdownMenu.Root><DropdownMenu.Trigger asChild><IconButton label="Document actions"><MoreHorizontal /></IconButton></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="action-menu" align="end">
+                <DropdownMenu.Item disabled={busy} onSelect={() => { if (canLeave()) void mutate(async () => applyDocument(await notesApi.get(document.id))) }}><RefreshCw />Reload saved note</DropdownMenu.Item>
+                <DropdownMenu.Item disabled={dirty || busy} onSelect={() => {
+                  if (!navigator.clipboard) { setError('Clipboard unavailable. Export the Markdown file instead.'); return }
+                  void navigator.clipboard.writeText(document.content).then(() => setNotice('Markdown copied')).catch(() => setError('Clipboard unavailable. Export the Markdown file instead.'))
+                }}><Copy />Copy Markdown</DropdownMenu.Item>
+                <DropdownMenu.Item disabled={dirty || busy} onSelect={() => setHistoryOpen(true)}><History />Note history</DropdownMenu.Item>
+                {document.sourceRecordingId && <DropdownMenu.Item asChild><Link to={`/transcripts/${document.sourceRecordingId}`}><FileText />Source transcript</Link></DropdownMenu.Item>}
+                {!document.deletedAt && <><DropdownMenu.Separator /><DropdownMenu.Item className="destructive" disabled={dirty || busy} onSelect={() => { if (window.confirm('Move this note to Trash for 30 days? Source recordings are kept.')) void mutate(async () => applyDocument(await notesApi.trash(document.id, document.revision))) }}><Trash2 />Move note to Trash</DropdownMenu.Item></>}
+              </DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>
+            </div>
+          </header>
           {document.deletedAt ? <div className="notes-trash-banner"><span>In Trash since {shortDate(document.deletedAt)}</span><Button size="sm" variant="outline" disabled={busy} onClick={() => void mutate(async () => { applyDocument(await notesApi.restore(document.id, document.revision)); setNotice('Note restored') })}><RotateCcw />Restore</Button><Button size="icon" variant="ghost" title="Delete permanently" aria-label="Delete permanently" disabled={busy} onClick={() => { if (window.confirm('Permanently delete this note and its saved versions? This cannot be undone. Source audio is not affected.')) void mutate(async () => { await notesApi.purge(document.id, document.revision); setParams({}); setDocument(null) }) }}><Trash2 /></Button></div>
-            : <div className="notes-document-actions"><FolderSelect folders={folders} value={folderDraft} onChange={setFolderDraft} disabled={busy} />
-              <Button size="icon" variant="ghost" aria-label={document.starred ? 'Unstar note' : 'Star note'} title={document.starred ? 'Unstar note' : 'Star note'} disabled={busy || dirty} onClick={() => void mutate(async () => applyDocument(await notesApi.update(document.id, { starred: !document.starred, revision: document.revision })))}><Star className={document.starred ? 'note-star' : ''} /></Button>
-              <Button size="icon" variant="ghost" aria-label="Copy Markdown" title="Copy Markdown" disabled={dirty || busy} onClick={() => {
-                if (!navigator.clipboard) { setError('Clipboard unavailable. Export the Markdown file instead.'); return }
-                void navigator.clipboard.writeText(document.content).then(() => setNotice('Markdown copied')).catch(() => setError('Clipboard unavailable. Export the Markdown file instead.'))
-              }}><Copy /></Button>
-              <DropdownMenu.Root><DropdownMenu.Trigger asChild><Button size="icon" variant="ghost" title="Export note" aria-label="Export note" disabled={dirty || busy}><Download /></Button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="action-menu" align="end"><DropdownMenu.Item onSelect={() => exportNote('md')}><FileText />Markdown file</DropdownMenu.Item><DropdownMenu.Item onSelect={() => exportNote('json')}><FileText />JSON with metadata</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>
-              <Button size="icon" variant="ghost" aria-label="Send note" title="Send note" disabled={dirty || busy} onClick={() => setSendOpen(true)}><Send /></Button>
-              <Button size="icon" variant="ghost" aria-label="Note history" title="Note history" disabled={dirty || busy} onClick={() => setHistoryOpen(true)}><History /></Button>
-              <Button size="icon" variant="ghost" aria-label="Move note to Trash" title="Move note to Trash" disabled={dirty || busy} onClick={() => { if (window.confirm('Move this note to Trash for 30 days? Source recordings are kept.')) void mutate(async () => applyDocument(await notesApi.trash(document.id, document.revision))) }}><Trash2 /></Button>
-            </div>}
-          <div className="notes-document-body"><input className="notes-title-input" aria-label="Note title" value={title} maxLength={180} disabled={busy || !!document.deletedAt} onChange={event => setTitle(event.target.value)} />
-            <div className="notes-document-meta"><span role="status">{dirty ? 'Unsaved changes' : `Revision ${document.revision}`}</span><span>{content.trim() ? content.trim().split(/\s+/).length : 0} words</span>{document.sourceOrigin?.startsWith('ai:mistral:') && <span title={document.sourceOrigin.slice(11)}>Mistral-generated original</span>}{document.sourceRecordingId && <Link to={`/transcripts/${document.sourceRecordingId}`}><FileText />Source transcript</Link>}</div>
-            {mode === 'edit' && !document.deletedAt ? <textarea className="notes-markdown-input" aria-label="Markdown content" value={content} maxLength={524288} spellCheck onChange={event => setContent(event.target.value)} disabled={busy} placeholder="# Your note" onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); if (dirty && !busy) save() } }} />
-              : <div className="notes-markdown-preview"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{ img: ({ alt }) => <span className="notes-image-placeholder">[Image: {alt || 'external image'}]</span>, a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer noopener">{children}</a> }}>{deferredContent || '*Empty note*'}</ReactMarkdown></div>}
-          </div>
+            : <div className="notes-location"><Folder /><FolderSelect folders={folders} value={folderDraft} onChange={setFolderDraft} disabled={busy} />{document.sourceRecordingId && <Link to={`/transcripts/${document.sourceRecordingId}`}><FileText />Source transcript</Link>}</div>}
+          <DocumentCanvas key={document.id} document={document} content={content} onChange={setContent} mode={mode} onModeChange={setMode} busy={busy} onSave={save} />
           {sendOpen && <SendNoteDialog document={document} onClose={() => setSendOpen(false)} />}
           {historyOpen && <NoteHistory document={document} onClose={() => setHistoryOpen(false)} onRestored={note => { applyDocument(note); setRefresh(value => value + 1); setHistoryOpen(false); setNotice('Version restored as a new revision') }} />}
         </> : <div className="notes-empty notes-editor-empty"><NotebookPen /><h2>Your Markdown workspace</h2><Button variant="outline" onClick={createNote}><FilePlus2 />New note</Button></div>}
@@ -250,7 +252,7 @@ function FolderForm({ folder, folders, parentId, onClose, onSaved }: {folder: No
       finally { setBusy(false) }
     }}><label>Name<input autoFocus aria-label="Folder name" value={name} onChange={event => setName(event.target.value)} required maxLength={180} /></label>
       <label>Parent folder<FolderSelect folders={folders} value={parent} onChange={setParent} rootLabel="Workspace" exclude={folder?.id} disabled={busy} /></label>
-      {error && <p role="alert" className="note-error">{error}</p>}<footer><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={busy || !name.trim()}>{busy ? <Loader2 className="animate-spin" /> : <FolderPlus />}{folder ? 'Save folder' : 'Create folder'}</Button></footer>
+      {error && <p role="alert" className="note-error">{error}</p>}<footer><Button type="button" variant="ghost" disabled={busy} onClick={onClose}><X />Cancel</Button><Button disabled={busy || !name.trim()}>{busy ? <Loader2 className="animate-spin" /> : <FolderPlus />}{folder ? 'Save folder' : 'Create folder'}</Button></footer>
     </form>
   </NoteDialog>
 }
@@ -265,8 +267,8 @@ function NoteHistory({ document, onClose, onRestored }: {document: NoteDocument;
   return <NoteDialog title="Note history" description={document.title} onClose={onClose} busy={busy}>
     {error && <p role="alert" className="note-error">{error}</p>}
     <div className="notes-history-list">{versions.map(version => <button type="button" disabled={busy} key={version.id} aria-pressed={selected?.id === version.id} onClick={async () => { setBusy(true); try { setSelected(await notesApi.version(document.id, version.id)) } catch (error) { setError(errorMessage(error)) } finally { setBusy(false) } }}><span>Revision {version.revision}</span><time>{new Date(version.createdAt).toLocaleString()}</time></button>)}</div>
-    {more && <Button variant="ghost" disabled={busy} onClick={async () => { setBusy(true); try { const rows = await notesApi.versions(document.id, versions.length); setVersions(current => [...current, ...rows]); setMore(rows.length === 30) } catch (error) { setError(errorMessage(error)) } finally { setBusy(false) } }}>Load older versions</Button>}
+    {more && <Button variant="ghost" disabled={busy} onClick={async () => { setBusy(true); try { const rows = await notesApi.versions(document.id, versions.length); setVersions(current => [...current, ...rows]); setMore(rows.length === 30) } catch (error) { setError(errorMessage(error)) } finally { setBusy(false) } }}><ChevronDown />Load older versions</Button>}
     {selected && <><h3 className="notes-history-title">{selected.title}</h3><pre className="notes-history-content">{selected.content}</pre></>}
-    <footer><Button variant="outline" onClick={onClose} disabled={busy}>Close</Button><Button disabled={busy || !selected || selected.revision === document.revision} onClick={async () => { if (!selected || !window.confirm('Restore this content as a new revision? Current history will be kept.')) return; setBusy(true); try { onRestored(await notesApi.restoreVersion(document.id, selected.id, document.revision)) } catch (error) { setError(errorMessage(error)) } finally { setBusy(false) } }}><RotateCcw />Restore version</Button></footer>
+    <footer><Button variant="outline" onClick={onClose} disabled={busy}><X />Close</Button><Button disabled={busy || !selected || selected.revision === document.revision} onClick={async () => { if (!selected || !window.confirm('Restore this content as a new revision? Current history will be kept.')) return; setBusy(true); try { onRestored(await notesApi.restoreVersion(document.id, selected.id, document.revision)) } catch (error) { setError(errorMessage(error)) } finally { setBusy(false) } }}><RotateCcw />Restore version</Button></footer>
   </NoteDialog>
 }

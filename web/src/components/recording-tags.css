@@ -1,0 +1,14 @@
+.recording-tag-list { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.recording-tag-list li { display: inline-flex; max-width: 100%; align-items: center; gap: 7px; padding: 3px 5px 3px 9px; border: 1px solid var(--border); border-radius: 5px; background: var(--secondary); font-size: 13px; }
+.recording-tag-list li > svg { width: 13px; height: 13px; flex: none; color: var(--muted-foreground); }
+.recording-tag-list li > span { min-width: 0; overflow-wrap: anywhere; }
+.recording-tag-list button { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 4px; color: var(--muted-foreground); }
+.recording-tag-list button:hover { background: var(--muted); color: var(--foreground); }
+.recording-tag-list button svg { width: 14px; height: 14px; }
+.recording-tag-input { display: flex; align-items: center; gap: 8px; }
+.recording-tag-input input { flex: 1; }
+.recording-tag-input button { flex: none; }
+.recording-tags-loading { display: flex; align-items: center; gap: 8px; color: var(--muted-foreground); font-size: 13px; }
+.recording-tags-loading svg { width: 16px; height: 16px; }
+.recording-tags-error { margin-top: 16px; }
+@media (pointer: coarse) { .recording-tag-list button { width: 36px; height: 36px; } }

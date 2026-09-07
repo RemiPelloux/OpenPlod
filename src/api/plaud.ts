@@ -1,8 +1,13 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import { getConnInfo } from 'hono/bun';
+import { PlaudEnrollment } from '../sync/plaud-enrollment';
+import { loadIdentity } from '../sync/plaud-direct';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, resolve } from 'node:path';
-import { db } from '../db/client';
+import { db, sqlite } from '../db/client';
+import { PlaudAutoImport } from '../sync/plaud-auto-import';
 import { recordings, userSettings } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { fingerprintFile } from '../library/recording-library';
@@ -11,6 +16,37 @@ import { scanDesktopPlaud } from '../sync/desktop-plaud';
 import { cancelDirectPlaud, directPlaudConfigured, importDirectPlaudRecording, readDirectPlaudRecordings } from '../sync/plaud-direct';
 
 const app = new Hono();
+app.use('*', bodyLimit({ maxSize: 16384 }));
+export const automaticPlaud = new PlaudAutoImport(sqlite);
+app.get('/auto-import', c => c.json({ success: true, data: automaticPlaud.status() }));
+app.patch('/auto-import', async c => {
+  try { const input = await c.req.json(); if (typeof input.enabled !== 'boolean') throw new Error('Import preference must be true or false.');
+    return c.json({ success: true, data: automaticPlaud.set(input.enabled) }); }
+  catch (e) { return c.json({ success: false, error: (e as Error).message }, 400); }
+});
+const enrollment = new PlaudEnrollment(loadIdentity);
+app.use('/authorizations/*', async (c, next) => { c.header('Cache-Control', 'no-store'); return next(); });
+const localOwner = (c: Parameters<typeof getConnInfo>[0]) => {
+  try { return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(getConnInfo(c).remote.address ?? ''); } catch { return false; }
+};
+app.post('/authorizations', async c => {
+  if (!process.env.OPENPLOD_PAIRING_TOKEN) return c.json({ success: false, error: 'Secure desktop pairing must be configured first.' }, 403);
+  try { return c.json({ success: true, data: enrollment.create(await c.req.json()) }); }
+  catch { return c.json({ success: false, error: 'Invalid authorization request or too many pending requests.' }, 400); }
+});
+app.get('/authorizations', c => localOwner(c) ? c.json({ success: true, data: enrollment.list() }) : c.json({ success: false, error: 'Open device authorization on the Mac.' }, 403));
+app.get('/authorizations/:id', c => {
+  try { return c.json({ success: true, data: enrollment.get(c.req.param('id')) }); }
+  catch (e) { return c.json({ success: false, error: (e as Error).message }, 404); }
+});
+app.post('/authorizations/:id/approve', async c => {
+  if (!localOwner(c)) return c.json({ success: false, error: 'Approval must happen on this Mac.' }, 403);
+  try { const body = await c.req.json(); if (body.confirm !== true || typeof body.code !== 'string') throw new Error('Enter the verification code shown on your phone.');
+    return c.json({ success: true, data: await enrollment.approve(c.req.param('id'), body.code) }); }
+  catch (e) { return c.json({ success: false, error: (e as Error).message }, 400); }
+});
+app.post('/authorizations/:id/acknowledge', c => c.json({ success: true, data: enrollment.remove(c.req.param('id')) }));
+app.delete('/authorizations/:id', c => localOwner(c) ? c.json({ success: true, data: enrollment.remove(c.req.param('id')) }) : c.json({ success: false, error: 'Use the Mac to decline authorization.' }, 403));
 let importJob: { id: string; state: 'running' | 'complete' | 'failed'; result?: Awaited<ReturnType<typeof importDirectPlaudRecording>>; error?: string } | null = null;
 
 app.get('/device-recordings', async c => {

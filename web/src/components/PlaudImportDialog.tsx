@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, Bluetooth, Check, Download, FileAudio, Loader2, RefreshCw, RotateCcw, ShieldCheck, X } from 'lucide-react'
+import { ArrowUpRight, Bluetooth, Check, Download, FileAudio, Loader2, RefreshCw, RotateCcw, ShieldCheck, X } from "@/components/icons"
 import { Button } from '@/components/ui/button'
 import { api, type DeviceRecording } from '@/lib/api'
 import { getRuntime } from '@/lib/runtime'
@@ -95,6 +95,8 @@ export function PlaudImportDialog({ variant = 'default' }: { variant?: 'default'
   const newRows = visible.filter(row => !row.recordingId)
   const allSelected = newRows.length > 0 && newRows.every(row => selected.includes(row.sessionId))
   const selectedBytes = (rows ?? []).filter(row => selected.includes(row.sessionId) && !row.recordingId).reduce((sum, row) => sum + row.size, 0)
+
+  if (mobile) return <Button asChild variant={variant}><Link to="/devices"><Bluetooth />Get from Plaud</Link></Button>
 
   return <Dialog.Root open={open} onOpenChange={value => {
     if (!value && busy) return

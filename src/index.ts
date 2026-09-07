@@ -16,6 +16,9 @@ import { db, sqlite } from './db/client';
 import { OrganizerStore } from './organizer/store';
 import { createOrganizerApi } from './api/organizer';
 import { apiAccess } from './api/access';
+import { RecordingAi } from './organizer/recording-ai';
+import { createRecordingAiApi } from './api/recording-ai';
+import { automaticPlaud } from './api/plaud';
 import { recordings, transcripts, userSettings } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { searchTranscripts } from './search/transcripts';
@@ -145,6 +148,7 @@ app.route('/api/transcripts', transcriptsApi);
 const organizer = new OrganizerStore(sqlite);
 organizer.purgeExpired();
 app.route('/api/v1', createOrganizerApi(organizer));
+app.route('/api/ai', createRecordingAiApi(new RecordingAi(organizer)));
 
 // Settings
 app.get('/api/settings', async (c) => {
@@ -240,6 +244,7 @@ async function startFolderSync() {
 }
 
 void startFolderSync().catch(error => console.error('[Startup] Folder sync failed:', error));
+setInterval(() => { void automaticPlaud.tick(); }, 60000).unref();
 void purgeExpiredTrash().then(count => {
   if (count > 0) console.log(`[Retention] Purged ${count} expired recording(s)`);
 }).catch(error => console.error('[Retention] Trash purge failed:', error));

@@ -31,12 +31,15 @@ export class PlaudDownload {
   private offset = 0;
   private head = false;
   private completed = false;
-  constructor(readonly session: PlaudSessionEntry) {
+  constructor(readonly session: PlaudSessionEntry, prefix: Uint8Array = new Uint8Array()) {
     if (!Number.isSafeInteger(session.size) || session.size <= 0 || session.size > 64 * 1024 * 1024) {
       throw new Error('Recording exceeds the current 64 MiB Bluetooth transfer limit');
     }
     this.bytes = Buffer.alloc(session.size);
+    if (prefix.length >= session.size) throw new Error('Resume prefix must leave a nonempty download range');
+    this.bytes.set(prefix); this.offset = prefix.length;
   }
+  get downloaded() { return this.bytes.subarray(0, this.offset); }
   add(packet: Buffer): { bytes: Buffer; tailCrc: number } | null {
     if (this.completed) throw new Error('Download already completed');
     if (packet[0] === 1 && packet.length >= 3) {
@@ -108,13 +111,18 @@ export async function listPlaudSessions(connection: PlaudPackets, protocol = 20)
   throw new Error('Recording list timeout; device recording count is unknown');
 }
 
-export async function downloadPlaudSession(connection: PlaudPackets, session: PlaudSessionEntry) {
-  const download = new PlaudDownload(session);
-  await connection.write(buildDownloadRequest({ sessionId: session.sessionId, offset: 0, end: session.size }));
-  const deadline = Date.now() + 180000;
+export async function downloadPlaudSession(connection: PlaudPackets, session: PlaudSessionEntry,
+  options: { prefix?: Uint8Array; checkpoint?: (bytes: Buffer) => Promise<void> } = {}) {
+  const download = new PlaudDownload(session, options.prefix);
+  await connection.write(buildDownloadRequest({ sessionId: session.sessionId, offset: options.prefix?.length ?? 0, end: session.size }));
+  const deadline = Date.now() + 15 * 60000;
+  let checkpointed = options.prefix?.length ?? 0;
+  try {
   while (Date.now() < deadline) {
     const result = download.add(await connection.packet(Math.min(15000, deadline - Date.now())));
+    if (download.downloaded.length - checkpointed >= 65536) { await options.checkpoint?.(download.downloaded); checkpointed = download.downloaded.length; }
     if (result) return result;
   }
   throw new Error('Recording download timed out; partial audio was not imported');
+  } finally { if (download.downloaded.length) await options.checkpoint?.(download.downloaded); }
 }

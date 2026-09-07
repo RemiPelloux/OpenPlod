@@ -2,6 +2,17 @@
 
 Updated September 7, 2026 for the 0.3.0 experimental release. Desktop remains the primary audio owner; Android is an experimental companion. A build or simulated response is not a hardware acceptance result.
 
+## Current Development Changes (Unreleased)
+
+- Native SDK-free Android Bluetooth extraction: two real Note Pro sessions listed, 30,208 device bytes downloaded for a 6.86-second recording, decrypted Opus playback advanced, source retained.
+- One-time encrypted phone enrollment from an already-authorized Mac, with a short verification code and Android Keystore storage. Fresh-owner authorization is still a separate gate.
+- Opt-in desktop/Android automatic imports; source-ID deduplication, bounded reconnect retries, and offset-based Bluetooth recovery. Desktop checkpoints append only new bytes rather than rewriting the growing prefix.
+- Recording bookmarks, playback speed, timestamp-preserving transcript corrections and speaker labels.
+- Mistral recording-context AI tab with selected sources, explicit provider consent, persisted conversations, quote-checked citations, activity stages, and Markdown export. Live Mistral acceptance passed on a real saved transcript.
+- 89 passing Bun tests; Android protocol tests cover the independent CryptoKit fixture, tampering/replay, command allowlist, and list pagination. Device evidence remains separate from synthetic tests.
+
+Remaining reliability gates: forced disconnect/process death during a real transfer, unattended Android foreground-service recovery under battery restrictions, fresh-device provisioning, and a true 16 KB runtime device. Mobile-to-desktop network uploads still retry the whole file.
+
 ## Delivered in 0.3.0
 
 - Markdown organizer, Mistral-generated documents with review-before-save, authenticated REST API, and opt-in-write MCP server.
@@ -59,8 +70,9 @@ Exit gate: fresh-install and upgrade acceptance, no lost recordings, reproducibl
 - Add byte-offset resumable mobile uploads; current retries resend the complete file and retain local audio until acknowledgement.
 - Verify offline recording/share import, playback, Markdown exports, and synchronization conflicts on real devices.
 - Exercise a real Android 16 KB page-size device or emulator; alignment checks alone are insufficient.
-- Keep standalone Plaud extraction explicitly experimental until the official-SDK route lists, downloads, plays, and retains a real device recording.
-- Resolve SDK licensing before distributing binaries containing it.
+- Broaden SDK-free direct-extraction acceptance beyond the single verified authorized Note Pro and Samsung phone.
+- Validate background monitoring after battery restrictions, process death, and phone reboot. Never claim an unavailable list is empty.
+- Publish a separately reviewed SDK-free APK only after release signing and fresh-install acceptance.
 
 Exit gate: interrupted-network and offline workflows complete without data loss, tested native UI, and a separately documented result for standalone Plaud hardware extraction.
 
