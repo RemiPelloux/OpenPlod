@@ -57,7 +57,7 @@ export function WorkspaceTiles() {
         </span>
         <div>
           <strong>Transcripts</strong>
-          <p>{engine ? `Powered by ${{ mistral: 'Mistral', whisper: 'local Whisper', deepgram: 'Deepgram' }[engine]}` : 'Transcription settings'}</p>
+          <p>{engine ? `Powered by ${{ mistral: 'Mistral', whisper: 'local Whisper', deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI' }[engine]}` : 'Transcription settings'}</p>
         </div>
         <ChevronRight className="tile-arrow" />
       </Link>

@@ -151,6 +151,14 @@ describe('recording library', () => {
       .toMatchObject({ fullText: 'User corrected text', origin: 'edited' });
     expect(await db.select().from(transcriptVersions).where(eq(transcriptVersions.recordingId, imported.recording.id)))
       .toHaveLength(3);
+    const generated = { recordingId: imported.recording.id, fullText: 'Provider text', segments: [], wordCount: 2, speakerCount: null, confidence: null,
+      generationId: crypto.randomUUID(), fingerprint: imported.recording.fingerprint, provenance: { provider: 'openai', model: 'whisper-1', usage: null } };
+    saveGeneratedTranscript(generated); saveGeneratedTranscript(generated);
+    expect(await db.select().from(transcriptVersions).where(eq(transcriptVersions.recordingId, imported.recording.id))).toHaveLength(4);
+    expect(() => saveGeneratedTranscript({ ...generated, generationId: crypto.randomUUID(), fingerprint: 'wrong' })).toThrow('Audio changed');
+    await softDeleteRecording(imported.recording.id);
+    expect(() => saveGeneratedTranscript({ ...generated, generationId: crypto.randomUUID() })).toThrow('Trash');
+    await restoreRecording(imported.recording.id);
     const stale = await recordingsApi.request(`/${imported.recording.id}/transcript`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fullText: 'Stale edit', revision: 1 }),
     });

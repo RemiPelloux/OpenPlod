@@ -1,10 +1,12 @@
-import { db } from '../db/client';
+import { db, sqlite } from '../db/client';
+import { readAiConfig, assertPrivacy } from '../ai/config';
 import { recordings, userSettings } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
 export async function forwardRecording(recordingId: string): Promise<string> {
+  assertPrivacy(readAiConfig(sqlite), 'openwhistle');
   const [recording] = await db.select().from(recordings).where(eq(recordings.id, recordingId)).limit(1);
-  if (!recording) throw new Error('Recording not found.');
+  if (!recording || recording.retentionState !== 'active') throw new Error('Active recording not found.');
   const values = Object.fromEntries((await db.select().from(userSettings)).map(row => [row.key, row.value]));
   if (values.openWhistleForwarding !== 'true') throw new Error('OpenWhistle forwarding is disabled.');
   if (!values.openWhistleBaseUrl || !values.openWhistleApiKey || !values.openWhistleAgentId) {
@@ -25,6 +27,7 @@ export async function forwardRecording(recordingId: string): Promise<string> {
       fingerprint: recording.fingerprint,
     }));
     const baseUrl = values.openWhistleBaseUrl.replace(/\/+$/, '');
+    assertPrivacy(readAiConfig(sqlite), 'openwhistle');
     const response = await fetch(`${baseUrl}/agents/${values.openWhistleAgentId}/runs`, {
       method: 'POST',
       headers: {

@@ -37,7 +37,7 @@ export const notesApi = {
   send: (id: string, destinationId: string, revision: number, idempotencyKey: string) => request<NoteDelivery>(`/documents/${id}/send`, 'POST', { destinationId, revision, confirm: true, idempotencyKey }),
 }
 
-export async function generateDocument(data: { idempotencyKey: string; recordingId: string; versionId: string | null; title: string; style: 'notes' | 'meeting' | 'brief'; instructions: string }, onProgress: (stage: string) => void, signal: AbortSignal): Promise<DocumentGeneration> {
+export async function generateDocument(data: { idempotencyKey: string; recordingId: string; versionId: string | null; title: string; style: 'notes' | 'meeting' | 'brief'; instructions: string; expectedProvider?: string }, onProgress: (stage: string) => void, signal: AbortSignal): Promise<DocumentGeneration> {
   const response = await fetch(apiUrl('/v1/documents/generate'), { method: 'POST', headers: authenticatedHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data), signal: AbortSignal.any([signal, AbortSignal.timeout(110000)]) })
   if (!response.ok || !response.body) { const payload = await response.json().catch(() => null); throw new Error(payload?.error || `Generation failed (HTTP ${response.status}).`) }
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()

@@ -18,7 +18,7 @@ describe('Mistral transcription adapter', () => {
       engine: 'mistral',
       fullText: 'A useful transcript.',
       wordCount: 3,
-      speakerCount: 1,
+      speakerCount: null,
       duration: 2.8,
       metadata: { language: 'en', model: 'voxtral-mini-latest' },
     });

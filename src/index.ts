@@ -11,7 +11,7 @@ import { initializeDatabase } from './db/setup';
 import recordingsApi from './api/recordings';
 import { FolderWatcher } from './sync/folder-watcher';
 import { jobQueue } from './jobs/queue';
-import { TranscriptionRouter, type EngineName } from './transcription/router';
+import { TranscriptionRouter } from './transcription/router';
 import { db, sqlite } from './db/client';
 import { OrganizerStore } from './organizer/store';
 import { createOrganizerApi } from './api/organizer';
@@ -19,7 +19,7 @@ import { apiAccess } from './api/access';
 import { RecordingAi } from './organizer/recording-ai';
 import { createRecordingAiApi } from './api/recording-ai';
 import { automaticPlaud } from './api/plaud';
-import { recordings, transcripts, userSettings } from './db/schema';
+import { recordings, userSettings } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { searchTranscripts } from './search/transcripts';
 import { homedir } from 'os';
@@ -29,6 +29,9 @@ import transcriptsApi from './api/transcripts';
 import { purgeExpiredTrash } from './library/recording-library';
 import { saveGeneratedTranscript } from './library/transcript-history';
 import { forwardRecordingWithRetry } from './library/forwarding';
+import { createAiSettingsApi } from './api/ai-settings';
+import { aiConfigSchema, readAiConfig, readSettings, assertPrivacy } from './ai/config';
+import packageInfo from '../package.json';
 
 // ============================================
 // Create tables on startup
@@ -50,22 +53,33 @@ console.log('[Transcription] Engines:', Object.entries(engineStatus).map(([k, v]
 // Register job handlers
 // ============================================
 
-jobQueue.register('process-recording', async (data: any) => {
+jobQueue.register('process-recording', async (data: any, job) => {
   const { recordingId, filePath } = data;
+  try {
+  const recording = db.select().from(recordings).where(eq(recordings.id, recordingId)).get();
+  if (!recording || recording.retentionState !== 'active' || recording.fingerprint !== data.fingerprint) throw new Error('Recording is unavailable or its audio changed.');
+  if (sqlite.query('SELECT id FROM transcript_versions WHERE id=? AND recording_id=?').get(job.id, recordingId)) {
+    await db.update(recordings).set({ status: 'complete', errorMessage: null }).where(eq(recordings.id, recordingId));
+    return;
+  }
+  const config = aiConfigSchema.parse(data.config);
+  const currentConfig = readAiConfig(sqlite);
+  assertPrivacy(currentConfig, config.transcriptionEngine);
   console.log(`[Job] Processing recording ${recordingId}`);
 
   await db.update(recordings).set({ status: 'transcribing' }).where(eq(recordings.id, recordingId));
 
   const savedSettings = await db.select().from(userSettings);
   const settings = Object.fromEntries(savedSettings.map(setting => [setting.key, setting.value]));
-  const primary = ['whisper', 'mistral', 'deepgram'].includes(settings.transcriptionEngine)
-    ? settings.transcriptionEngine as EngineName
-    : 'whisper';
+  const primary = config.transcriptionEngine;
   const router = new TranscriptionRouter(
-    { primary, fallback: ['whisper', 'mistral', 'deepgram'].filter(name => name !== primary) as EngineName[] },
-    { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey },
+    { primary, fallback: config.transcriptionFallback, localOnly: currentConfig.privacyMode === 'local-only' || config.privacyMode === 'local-only', beforeAttempt: provider => assertPrivacy(readAiConfig(sqlite), provider) },
+    { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey, openaiApiKey: settings.openaiApiKey, assemblyaiApiKey: settings.assemblyaiApiKey },
   );
-  const result = await router.transcribeFile(filePath);
+  const options = { model: config.transcriptionModel || undefined, language: config.transcriptionLanguage, diarize: config.transcriptionDiarize, vocabulary: config.transcriptionVocabulary };
+  const startedAt = new Date().toISOString();
+  const result = await router.transcribeFile(filePath, { ...options, signal: job.signal, checkpoint: job.checkpoint, onCheckpoint: job.saveCheckpoint });
+  job.signal.throwIfAborted();
 
   if (result.success) {
     const documentUpdated = saveGeneratedTranscript({
@@ -75,6 +89,9 @@ jobQueue.register('process-recording', async (data: any) => {
       wordCount: result.wordCount,
       speakerCount: result.speakerCount,
       confidence: result.confidence,
+      fingerprint: data.fingerprint,
+      generationId: job.id,
+      provenance: { provider: result.engine, model: result.metadata?.model ?? null, fingerprint: data.fingerprint, options, startedAt, completedAt: new Date().toISOString(), usage: result.metadata?.usage ?? null, language: result.metadata?.language ?? null },
     });
 
     if (documentUpdated && settings.autoSummarize === 'true') {
@@ -90,16 +107,17 @@ jobQueue.register('process-recording', async (data: any) => {
     await db.update(recordings).set({
       status: 'complete',
       processedAt: new Date().toISOString(),
-      durationSeconds: Math.round(result.duration),
+      ...(result.duration > 0 ? { durationSeconds: Math.round(result.duration) } : {}),
+      errorMessage: null,
     }).where(eq(recordings.id, recordingId));
 
     console.log(`[Job] Recording ${recordingId} transcribed: ${result.wordCount} words, ${result.speakerCount} speakers (${result.engine})`);
   } else {
-    await db.update(recordings).set({
-      status: 'failed',
-      errorMessage: result.error,
-    }).where(eq(recordings.id, recordingId));
-    console.error(`[Job] Recording ${recordingId} failed: ${result.error}`);
+    throw new Error(result.error || 'Transcription failed.');
+  }
+  } catch (error) {
+    await db.update(recordings).set({ status: 'failed', errorMessage: job.signal.aborted ? 'Processing cancelled.' : error instanceof Error ? error.message : 'Transcription failed.' }).where(eq(recordings.id, recordingId));
+    throw error;
   }
 });
 
@@ -134,8 +152,8 @@ app.use('/api/*', apiAccess);
 // Health/info
 app.get('/health', (c) => c.json({ status: 'ok', jobs: jobQueue.getStats() }));
 app.get('/api/info', (c) => c.json({
-  name: 'plaud-app',
-  version: '0.2.0',
+  name: 'OpenPlod',
+  version: packageInfo.version,
   status: 'ok',
   engines: transcriptionRouter.status(),
 }));
@@ -149,6 +167,7 @@ const organizer = new OrganizerStore(sqlite);
 organizer.purgeExpired();
 app.route('/api/v1', createOrganizerApi(organizer));
 app.route('/api/ai', createRecordingAiApi(new RecordingAi(organizer)));
+app.route('/api/ai-settings', createAiSettingsApi(sqlite));
 
 // Settings
 app.get('/api/settings', async (c) => {
@@ -157,7 +176,7 @@ app.get('/api/settings', async (c) => {
   return c.json({
     success: true,
     data: {
-      transcriptionEngine: values.transcriptionEngine,
+      transcriptionEngine: readAiConfig(sqlite).transcriptionEngine,
       syncFolderPath: values.syncFolderPath || '~/Documents/PlaudSync',
       autoTranscribe: values.autoTranscribe ?? 'true',
       autoSummarize: values.autoSummarize ?? 'false',
@@ -193,16 +212,27 @@ app.put('/api/settings/:key', async (c) => {
   ]);
   if (!allowedKeys.has(key)) return c.json({ success: false, error: 'Unknown setting' }, 400);
   const { value } = await c.req.json();
+  if (key === 'transcriptionEngine') {
+    if (!['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai'].includes(value)) return c.json({ success: false, error: 'Unknown transcription provider.' }, 400);
+    const config = readAiConfig(sqlite);
+    if (config.privacyMode === 'local-only' && value !== 'whisper') return c.json({ success: false, error: 'Local-only mode blocks cloud transcription.' }, 400);
+    config.transcriptionEngine = value;
+    config.transcriptionModel = ''; config.transcriptionDiarize = false; config.transcriptionVocabulary = [];
+    await db.insert(userSettings).values({ key: 'aiConfig', value: JSON.stringify(config) }).onConflictDoUpdate({ target: userSettings.key, set: { value: JSON.stringify(config) } });
+  }
   await db.insert(userSettings).values({ key, value: String(value) })
     .onConflictDoUpdate({ target: userSettings.key, set: { value: String(value), updatedAt: new Date().toISOString() } });
   return c.json({ success: true });
 });
 
 // Jobs
-app.get('/api/jobs', (c) => c.json({ success: true, data: jobQueue.getJobs(), stats: jobQueue.getStats() }));
+app.get('/api/jobs', (c) => c.json({ success: true, data: jobQueue.getJobs().map(({ data, ...job }) => ({ ...job, recordingId: (data as any).recordingId, provider: (data as any).config?.transcriptionEngine })), stats: jobQueue.getStats() }));
+app.post('/api/jobs/:id/cancel', c => c.json({ success: jobQueue.cancel(c.req.param('id')) }));
+app.post('/api/jobs/:id/resume', c => c.json({ success: jobQueue.resume(c.req.param('id')) }));
+app.patch('/api/jobs/:id', async c => { const body = await c.req.json(); return c.json({ success: jobQueue.setPriority(c.req.param('id'), body.priority) }); });
 
 // Transcription engine status
-app.get('/api/engines', (c) => c.json({ success: true, data: transcriptionRouter.status() }));
+app.get('/api/engines', (c) => c.json({ success: true, data: new TranscriptionRouter({}, readSettings(sqlite)).status() }));
 
 // Search across transcripts
 app.get('/api/search', async (c) => {

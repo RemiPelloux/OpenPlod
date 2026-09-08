@@ -1,7 +1,7 @@
 import { sqlite } from './client';
 import { initializeOrganizer } from '../organizer/store';
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 export function initializeDatabase() {
   sqlite.exec(`
@@ -114,6 +114,7 @@ export function initializeDatabase() {
           ), 'generated');
         `);
       }
+      if (version.user_version < 4) sqlite.exec('ALTER TABLE transcript_versions ADD COLUMN provenance TEXT');
       // Earlier builds could create multiple transcripts when reprocessing a recording.
       sqlite.exec(`
         DELETE FROM transcripts

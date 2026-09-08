@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.0 - 2026-09-08
+
+Experimental multi-provider prerelease; not a completed roadmap milestone.
+
+- Add OpenAI speech-to-text and AssemblyAI asynchronous transcription with persisted remote IDs and bounded status retries.
+- Share Mistral, OpenAI, Anthropic, and local Ollama adapters across summaries, Markdown documents, and cited chat.
+- Add separate provider/model settings, automatic language detection, supported vocabulary hints, per-recording transcription confirmation, and explicit fallback selection.
+- Enforce local-only processing and block OpenWhistle forwarding in that mode. No automatic model download or cloud fallback for local Whisper.
+- Persist processing jobs, cancellation, priority API, safe polling resume, fingerprint checks, and idempotent generated versions. Preserve manually edited transcripts.
+- Store generated transcript provider/model/options/fingerprint/timing/reported usage. Missing confidence, speakers, and usage stay unknown.
+- Replace the summary analyzer's silent truncation and permissive JSON parsing with bounded input, validated output, and source-version checks.
+- Keep existing Mistral credentials and document provenance through additive migrations. Legacy summary-only `LLM_*` configuration requires explicit migration in AI settings.
+
+Live acceptance for the newly added providers, spending controls, automatic large-file chunking, complete capability catalogs, and Android runtime acceptance remain open. Plaud compatibility is unchanged: only the documented Note Pro setup has hardware evidence. See [implementation status](docs/ai-providers.md).
+
+Validation: 122 Bun tests (1,076 assertions), backend type checking, frontend lint/build, macOS production build, and Android ARM64 debug build with 16 KB ZIP/ELF alignment checks passed. Real-vault browser checks covered playback, exports, transcripts/chat, settings persistence, consent, and responsive layouts. No new native-runtime, live-provider, or Plaud hardware acceptance is claimed.
+
+Distribution: macOS Apple Silicon ZIP and SHA-256 checksums. The Mac app is ad-hoc signed, not notarized; external extraction tools and existing Plaud authorization remain required. The Android debug APK is not published. Back up the entire vault before upgrading; replace only the app bundle.
+
 ## 0.4.1 - 2026-09-07
 
 Experimental prerelease: transcript, AI Chat, and Android connection workspaces.

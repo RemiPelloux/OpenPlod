@@ -71,6 +71,7 @@ export const transcriptVersions = sqliteTable('transcript_versions', {
   fullText: text('full_text').notNull(),
   segments: text('segments', { mode: 'json' }),
   origin: text('origin').notNull(), // generated or edited
+  provenance: text('provenance', { mode: 'json' }).$type<Record<string, unknown>>(),
   createdAt: text('created_at').default(sql`(datetime('now'))`).notNull(),
 });
 

@@ -2,6 +2,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { recordings, userSettings } from '../db/schema';
 import { jobQueue } from '../jobs/queue';
+import { sqlite } from '../db/client';
+import { readAiConfig } from '../ai/config';
 
 export type ProcessingRoute = 'openwhistle' | 'local' | 'disabled';
 
@@ -13,7 +15,7 @@ export async function queueRecordingProcessing(params: {
     (await db.select().from(userSettings)).map(setting => [setting.key, setting.value]),
   );
 
-  if (settings.openWhistleForwarding === 'true') {
+  if (settings.openWhistleForwarding === 'true' && readAiConfig(sqlite).privacyMode !== 'local-only') {
     await db.update(recordings).set({ forwardingStatus: 'queued', forwardingError: null })
       .where(eq(recordings.id, params.recordingId));
     await jobQueue.add('forward-recording', { recordingId: params.recordingId });

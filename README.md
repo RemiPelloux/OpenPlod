@@ -4,9 +4,9 @@
 
 <h1 align="center">OpenPlod</h1>
 <p align="center"><strong>Local-first Plaud Note Pro recording vault, transcription, and Markdown workspace.</strong></p>
-<p align="center">Import directly over Bluetooth. Keep your original audio. Turn recordings into structured documents and source-linked AI conversations with Mistral.</p>
+<p align="center">Import directly over Bluetooth. Keep your original audio. Turn recordings into structured documents and source-linked AI conversations.</p>
 <p align="center">
-  <a href="https://github.com/RemiPelloux/OpenPlod/releases/tag/v0.4.1"><img alt="Experimental release 0.4.1" src="https://img.shields.io/badge/release-0.4.1%20experimental-3975EE?style=flat-square" /></a>
+  <a href="https://github.com/RemiPelloux/OpenPlod/releases/tag/v0.5.0"><img alt="Experimental release 0.5.0" src="https://img.shields.io/badge/release-0.5.0%20experimental-3975EE?style=flat-square" /></a>
   <a href="https://github.com/RemiPelloux/OpenPlod/actions/workflows/ci.yml"><img alt="CI source checks" src="https://github.com/RemiPelloux/OpenPlod/actions/workflows/ci.yml/badge.svg" /></a>
   <img alt="macOS Apple Silicon" src="https://img.shields.io/badge/macOS-Apple%20Silicon-111113?style=flat-square" />
   <a href="docs/mcp.md"><img alt="MCP read-only by default" src="https://img.shields.io/badge/MCP-read--only%20by%20default-197A68?style=flat-square" /></a>
@@ -28,19 +28,31 @@
 OpenPlod brings recording, playback, transcription, and export into one desktop-first workspace. The Mac app owns the durable audio vault; the Android companion pairs over your private network and can extract directly from an enrolled Note Pro. Keep recordings on your Plaud, keep a copy on your computer, and work with transcripts as documents.
 
 > [!IMPORTANT]
-> **0.4.1 is an experimental prerelease, not a plug-and-play Plaud replacement.** Direct Bluetooth extraction has been verified on one authorized Plaud Note Pro. Other devices and firmware are not established. Initial desktop authorization still requires a privately provisioned identity; there is no self-service authorization wizard yet. You can use the recording vault, microphone, file imports, transcripts, and documents without a Plaud identity.
+> **0.5.0 is an experimental prerelease, not a plug-and-play Plaud replacement.** Direct Bluetooth extraction has been verified on one authorized Plaud Note Pro. Other devices and firmware are not established. Initial desktop authorization still requires a privately provisioned identity; there is no self-service authorization wizard yet. You can use the recording vault, microphone, file imports, transcripts, and documents without a Plaud identity.
 
 ![OpenPlod desktop recording library in dark mode; private titles are redacted](docs/images/recording-library.png)
 
 *Actual application and local vault, with the Export tab selected. Private recording titles and tags are masked; no mock records or fabricated processing results are shown.*
 
-## New in 0.4.1
+## New in 0.5.0
+
+- Separate transcription, summary, document, and chat provider settings. Existing Mistral keys are retained.
+- OpenAI and AssemblyAI speech adapters; OpenAI, Anthropic, and local Ollama text adapters.
+- Per-recording transcription provider/model selection, language detection, supported vocabulary hints, and explicit fallback.
+- Local-only processing, persisted jobs, cancellation, known-remote-job resume, and generated transcript provenance.
+- Shared reviewed Markdown generation and cited chat, with provider-specific consent labels.
+
+**Experimental, not production-accepted:** new cloud providers have contract tests but no live acceptance with owner credentials; Ollama was not running on the test Mac. Spending controls, automatic long-audio chunking, complete per-model language catalogs, and production Android acceptance remain unfinished. Large OpenAI files are rejected before upload, not silently truncated. See [0.5 implementation status](docs/ai-providers.md) and the [0.5.0 prerelease](https://github.com/RemiPelloux/OpenPlod/releases/tag/v0.5.0).
+
+**Plaud compatibility has not expanded:** direct extraction was verified only on the documented authorized Note Pro setup. Plaud Note, NotePin, other models, and untested firmware are **unverified**, not universally supported.
+
+## Previously in 0.4.1
 
 - **Transcript workspace:** compact list and Markdown reader, export menus, editing links, and Mistral document creation.
 - **AI Chat:** collapsible source/history controls, selected-source chips, prompt shortcuts, answer copying, and a cleaner composer with explicit cloud consent.
 - **Android connections:** a dedicated page with a private pairing QR that stays hidden until requested, vault reachability checks, and confirmed unpairing.
 - **Navigation and reliability:** small-screen transcript Back navigation, guarded asynchronous responses, and real-library regression checks.
-- **Road to 1.0:** a phased feature roadmap with additional AI-provider targets and measurable release gates. Planned providers are not yet implemented.
+- **Road to 1.0:** a phased feature roadmap with additional AI-provider targets and measurable release gates. Provider adapters were added subsequently in the experimental 0.5.0 release.
 
 See the [0.4.1 changelog](CHANGELOG.md#041---2026-09-07) for validation and limitations.
 
@@ -57,7 +69,7 @@ See the [changelog](CHANGELOG.md#040---2026-09-07) for validation and remaining 
 
 ## Road to 1.0.0
 
-The [1.0.0 roadmap](ROADMAP.md) expands OpenPlod into a multi-provider transcript and knowledge workspace while keeping original audio safe. These are **planned features**, not capabilities included in 0.4.1:
+The [1.0.0 roadmap](ROADMAP.md) expands OpenPlod into a multi-provider transcript and knowledge workspace while keeping original audio safe. The 0.5.0 prerelease delivers an initial implementation with acceptance gates still open; later milestones remain planned:
 
 - **0.5:** OpenAI and AssemblyAI speech-to-text, stronger Mistral/Deepgram/local Whisper controls, and separate cloud/local AI choices for transcript analysis.
 - **0.6:** Transcript Studio with reviewed AI cleanup, translation, version comparison, chapters, reusable document templates, and subtitle exports.
@@ -71,9 +83,9 @@ Additional transcript-analysis targets include OpenAI, Anthropic, and local Olla
 
 | Platform | Package | Notes |
 | --- | --- | --- |
-| macOS Apple Silicon | [OpenPlod 0.4.1 ZIP](https://github.com/RemiPelloux/OpenPlod/releases/download/v0.4.1/OpenPlod-0.4.1-macos-arm64.zip) | Ad-hoc signed, not notarized. Requires external tools for direct Plaud extraction. |
+| macOS Apple Silicon | [OpenPlod 0.5.0 ZIP](https://github.com/RemiPelloux/OpenPlod/releases/download/v0.5.0/OpenPlod-0.5.0-macos-arm64.zip) | Experimental. Ad-hoc signed, not notarized. Requires external tools for direct Plaud extraction. |
 | Android ARM64 | [Build instructions](#android-companion) | Current source uses a native, SDK-free direct Bluetooth adapter. Development build only; no new public APK release yet. |
-| Source | [Tagged source and release notes](https://github.com/RemiPelloux/OpenPlod/releases/tag/v0.4.1) | Includes frontend, backend, native adapters, API, MCP, and tests. |
+| Source | [Tagged source and release notes](https://github.com/RemiPelloux/OpenPlod/releases/tag/v0.5.0) | Includes frontend, backend, native adapters, API, MCP, and tests. |
 
 Download `SHA256SUMS.txt` from the same release and verify the ZIP with `shasum -a 256 -c SHA256SUMS.txt`. Extract the archive, move `OpenPlod.app` to Applications, and open it. macOS may require explicit approval in Privacy & Security because the build is not notarized. Verify the source and checksum before approving it; do not disable Gatekeeper system-wide.
 
@@ -83,9 +95,9 @@ Download `SHA256SUMS.txt` from the same release and verify the ZIP with `shasum 
 
 1. **Capture or import.** Record in OpenPlod, import an audio file, transfer from the paired phone, or use **Get from Plaud** with an authorized Note Pro.
 2. **Keep a durable copy.** OpenPlod stores the audio in the desktop vault before acknowledging a mobile transfer. Direct Plaud imports retain the source session on the device.
-3. **Transcribe.** Select Mistral Voxtral, local whisper.cpp, or Deepgram in Settings. Processing failure does not delete the recording.
+3. **Transcribe.** Select a speech provider in Settings or the recording's transcription dialog. Mistral, local whisper.cpp, and Deepgram are joined by experimental OpenAI and AssemblyAI adapters. Processing failure does not delete the recording.
 4. **Create a document.** Open a transcript, select **Create document**, choose structured notes, meeting minutes, or a project brief, and add optional instructions.
-5. **Review and organize.** Mistral returns Markdown for review. Saving creates an independent document with source references; move it into a folder, edit it, or restore a prior revision.
+5. **Review and organize.** Your selected document provider returns Markdown for review. Saving creates an independent document with source references; move it into a folder, edit it, or restore a prior revision.
 6. **Export or connect.** Download Markdown/JSON, send a saved document to a configured destination, or let a trusted MCP client read it.
 
 The source transcript, generated document, and original audio are separate resources. Editing the document does not rewrite the source recording.
@@ -95,10 +107,10 @@ The source transcript, generated document, and original audio are separate resou
 - **Get recordings from Plaud.** Open **Get from Plaud** in Library or New Recording, connect, select recordings, and import them. Filter New/Saved, sort by size, cancel the remaining batch, retry, restore a saved item from Trash, or open it in the library.
 - **Keep your audio.** Import files, capture microphone audio, or receive recordings from the paired mobile app. The vault tracks stable recording IDs, content fingerprints, and source provenance.
 - **Work in Markdown.** Browse the Transcripts tab, read and edit documents, inspect generated and manual versions, and export Markdown, plain text, or JSON. Reprocessing adds a generated version without silently replacing a manual edit.
-- **Organize your notes.** Create nested folders in Notes, import Markdown files, edit/preview documents, star notes, restore history, and recover notes from Trash. Use **Create document** on a transcript to generate structured notes, meeting minutes, or a project brief with Mistral, review the Markdown, and save it with source provenance.
+- **Organize your notes.** Create nested folders in Notes, import Markdown files, edit/preview documents, star notes, restore history, and recover notes from Trash. Use **Create document** on a transcript to generate structured notes, meeting minutes, or a project brief with your selected document provider, review the Markdown, and save it with source provenance.
 - **Connect your tools.** Use the [versioned REST API](docs/api.md) and [read-only-by-default MCP server](docs/mcp.md). Send saved documents to explicitly configured webhook destinations, or export/share Markdown using the native platform controls.
 - **Listen and organize.** Play and seek audio, rename recordings, edit metadata, tags, context, and notes, and use Trash to restore deleted items during the 30-day retention period.
-- **Choose processing.** Use Mistral Voxtral, local whisper.cpp, or Deepgram. Configure an analysis provider for summaries and action items, or optionally forward recordings to OpenWhistle.
+- **Choose processing.** Configure speech and text providers separately, with explicit fallback and local-only options. See [provider support and limits](docs/ai-providers.md). Optional OpenWhistle forwarding is blocked in local-only mode.
 - **Use the same workspace on Android.** QR pairing, microphone capture, audio share/import, transcript views, and the shared Plaud import dialog are included. Mobile transfers retain local audio until the desktop acknowledges storage.
 
 The shared React interface uses shadcn-style Radix controls, original custom SVG icons, light/dark themes, accessible dialogs, keyboard navigation, a real audio timeline, and reduced-motion support. **Recordings**, **Transcripts**, and **Documents** are separate workspaces rather than competing status tabs.
@@ -109,7 +121,7 @@ The shared React interface uses shadcn-style Radix controls, original custom SVG
 
 ## Current Support
 
-| Capability | Status in 0.4.1 |
+| Capability | Status in 0.5.0 (historical hardware evidence unless noted) |
 | --- | --- |
 | macOS desktop vault | Built and tested on Apple Silicon |
 | Mac -> Note Pro Bluetooth download | Real recording listed, downloaded, decoded, imported, and played; source session retained |
@@ -172,16 +184,18 @@ The file must be owned by the current macOS user with permissions `0600`. For a 
 
 ### Transcription and Exports
 
-In **Settings**, choose **Mistral Voxtral** and enter your own API key. Local whisper.cpp and Deepgram are alternatives. The router tries the selected engine first, then available fallback engines. If audio must remain entirely local, leave cloud provider keys unset and disable OpenWhistle forwarding.
+In **Settings > AI providers**, select speech and text providers separately, then choose **Save AI**. Cloud fallback is disabled by default; selecting a fallback authorizes that additional audio destination. **Local only** blocks cloud speech, text analysis, and OpenWhistle forwarding. In-flight cloud requests may already have been received and billed; cancel their jobs separately.
 
 | Provider | Runs where | Setup |
 | --- | --- | --- |
 | Mistral Voxtral | Mistral cloud | API key in Settings or `MISTRAL_API_KEY` |
 | whisper.cpp | Your computer | Install whisper.cpp and configure its model; see [adapter](src/transcription/whisper.ts) |
 | Deepgram | Deepgram cloud | API key; supports speaker diarization |
-| Summaries/action items | Configured OpenAI-compatible endpoint | `LLM_API_KEY` or `OPENAI_API_KEY`; optional `LLM_BASE_URL` and `LLM_MODEL` |
+| OpenAI transcription | OpenAI cloud | `OPENAI_API_KEY`; maximum 25 MB; experimental, live acceptance pending |
+| AssemblyAI | AssemblyAI cloud | `ASSEMBLYAI_API_KEY`; asynchronous polling; experimental, live acceptance pending |
+| Summaries/documents/chat | Selected Mistral, OpenAI, Anthropic, or local Ollama | Separate provider/model for each task; see [provider setup](docs/ai-providers.md) |
 
-**Create document** uses the Mistral key configured in Settings for AI document structuring, with optional writing instructions and a review step before saving. The older recording-summary analyzer has separate LLM settings. Cloud transcription sends audio to that provider; document generation and analysis send transcript text. These are separate from downloading audio off the Plaud.
+**Create document** uses the selected document provider, optional writing instructions, and a review step before saving. Summaries, documents, and chat share one adapter layer. Legacy `LLM_BASE_URL`, `LLM_MODEL`, and `LLM_API_KEY` are no longer read: choose a supported analysis provider in Settings before running summaries. Cloud transcription sends audio; generation and analysis send transcript text. Neither is part of downloading audio off the Plaud.
 
 Open a recording or the **Transcripts** tab to preview Markdown, edit a transcript, inspect version history, or export Markdown, text, JSON, and library audio. The selected transcript version is included in document exports. For direct Plaud imports, library audio is the M4A playback copy; byte-for-byte device originals live separately under `recordings/originals/`.
 
@@ -210,7 +224,7 @@ The debug APK is produced under `src-tauri/gen/android/app/build/outputs/apk/uni
 
 ### Recording AI and Playback
 
-The **AI** tab accepts up to 12 selected recordings with saved transcripts. After explicit consent, Mistral answers using only that selected context. Answers are saved with provider/model provenance, activity stages, exact-quote source references, transcript version IDs, and timestamp links where available. Open previous conversations or export answers as Markdown. Oversized context, missing credentials, invalid citations, and deleted sources produce errors instead of placeholder answers.
+The **AI** tab accepts up to 12 selected recordings with saved transcripts. After explicit consent, the selected chat provider answers using only that selected context. Answers are saved with provider/model provenance, activity stages, exact-quote source references, transcript version IDs, and timestamp links where available. Open previous conversations or export answers as Markdown. Oversized context, missing credentials, invalid citations, and deleted sources produce errors instead of placeholder answers.
 
 Recording detail includes 0.75x to 2x playback, timestamp bookmarks, and segment corrections with speaker-label editing. Corrections create a new user-edited transcript version and preserve supplied timing; generated versions remain separate. Untimed text is never presented with fabricated timestamps.
 
@@ -269,7 +283,8 @@ web/src/                 Shared recording, transcript, settings, and import UI
 src/api/                 Recording, mobile, Plaud, and transcript endpoints
 src/library/             Durable imports, provenance, versions, forwarding
 src/sync/                Bluetooth protocol, transport, audio, folder adapters
-src/transcription/       Mistral, whisper.cpp, and Deepgram adapters
+src/transcription/       Mistral, Whisper, Deepgram, OpenAI, AssemblyAI adapters
+src/ai/                  Shared settings, capabilities, and text adapters
 src-tauri/               Native shell and platform integrations
 scripts/                 Swift bridge, SDK fetch, build and alignment checks
 ```
@@ -301,11 +316,11 @@ bun run tauri:build --bundles app
 bun run check:android
 ```
 
-The current source validation run passed **106 Bun tests**, backend type checking, frontend lint/build, the macOS build, and the Android ARM64 debug build with 16 KB APK/ELF alignment checks. Tests cover protocol framing/encryption/replay handling, transfer checkpoints, authorization envelopes, recording retention, transcript versions, AI source boundaries, organizer revisions, MCP access controls, custom SVGs, and audio-loading failures. Fixtures and test doubles are confined to automated tests; production does not fabricate recordings or AI output.
+The 0.5.0 validation run passed **122 Bun tests (1,076 assertions)**, backend type checking, frontend lint/build, the macOS build, and the Android ARM64 debug build with 16 KB APK/ELF alignment checks. Tests cover protocol framing/encryption/replay handling, transfer checkpoints, authorization envelopes, recording retention, transcript versions, provider contracts/privacy/recovery, AI source boundaries, organizer revisions, MCP access controls, custom SVGs, and audio-loading failures. Fixtures and test doubles are confined to automated tests; production does not fabricate recordings or AI output.
 
-Browser checks use an isolated snapshot of a real local library, not mock API responses. At widths from 320 to 1672 px, the recording and document flows passed playback, painted-waveform checks, failure recovery, formatting, outline navigation, export, tooltips, keyboard navigation, responsive layout, and reduced-motion checks. The installed native interface was checked separately with its real saved recordings and visible build identity. No real webhook destination was contacted. UI checks are not device-transfer or provider-generation acceptance.
+Browser checks use an isolated snapshot of a real local library, not mock API responses. The 0.5.0 checks covered playback, painted-waveform checks, exports, tags, navigation, transcript/chat flows at 320-1440 px, and provider settings persistence, local-only controls, and per-recording consent at 320/390/1440 px. Earlier recording/document checks also covered formatting, outline navigation, and reduced motion up to 1672 px. Native launch and physical-phone installation were not repeated for 0.5.0. No real webhook destination was contacted. UI checks are not device-transfer or provider-generation acceptance.
 
-Earlier live Mistral acceptance used an actual Plaud transcript: generation events, structured French Markdown preview, explicit save, provider/model provenance, and unchanged source transcript passed. Earlier Android hardware acceptance verified direct extraction on one enrolled Note Pro; its SDK-free build passed ZIP/ELF alignment checks. These are historical hardware observations, not a claim that every phone, firmware, or fresh install was retested for 0.4.1. No production-signed Android APK is distributed in this release.
+Earlier live Mistral acceptance used an actual Plaud transcript: generation events, structured French Markdown preview, explicit save, provider/model provenance, and unchanged source transcript passed. Earlier Android hardware acceptance verified direct extraction on one enrolled Note Pro; its SDK-free build passed ZIP/ELF alignment checks. These are historical observations, not fresh provider/hardware acceptance for 0.5.0. New-provider live acceptance remains pending. No Android APK is distributed in this release.
 
 Hardware evidence is separate: one approximately 76-second Note Pro recording was downloaded directly on Mac, decoded, imported, and played, and its source session was still present. This does not establish compatibility across devices or replace interrupted-transfer and fresh-install acceptance. The final installed-phone touch-flow check remains incomplete. See [ROADMAP.md](ROADMAP.md) for outstanding gates.
 
@@ -342,7 +357,7 @@ Support helps fund test devices, Mac/Android compatibility work, fresh-install o
 
 **Will importing remove the recording from my Plaud?** The direct extraction command set does not delete device sessions. The tested source session remained listed after import. Folder-source cleanup is a separate configurable workflow.
 
-**Is everything local?** Audio retention and the organizer are local to the desktop. Mistral/Deepgram transcription and Mistral document generation are cloud operations. Use only local whisper.cpp with cloud keys and forwarding disabled for local-only transcription.
+**Is everything local?** Audio retention and the organizer are local. Cloud providers receive audio or transcript text when selected. Choose **Local only** for Whisper.cpp transcription and local Ollama text processing. Both require separately installed local models; remote Ollama models are excluded.
 
 **Can I use Obsidian?** Export Markdown and place it in your Obsidian vault. OpenPlod's folders live in SQLite; there is no automatic bidirectional Obsidian-folder sync.
 

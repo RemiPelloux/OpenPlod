@@ -11,7 +11,7 @@ export interface NoteSummary {
 export interface NoteDocument extends NoteSummary { content: string }
 export interface DocumentGeneration {
   id: string; recordingId: string; versionId: string | null; state: 'pending' | 'ready' | 'failed';
-  provider: 'mistral'; model: string; title: string; content: string | null;
+  provider: 'mistral' | 'openai' | 'anthropic' | 'ollama'; model: string; title: string; content: string | null;
   createdAt: string; documentId: string | null; steps: { stage: string; at: string }[];
 }
 export interface NoteVersion { id: string; revision: number; title: string; content: string; createdAt: string }

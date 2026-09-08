@@ -56,7 +56,7 @@ try {
     else assert(content.includes(transcriptText));
   }
   await page.getByRole('button', { name: 'Create document', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Create document with Mistral' });
+  const dialog = page.getByRole('dialog', { name: 'Create AI document' });
   await dialog.waitFor();
   assert((await dialog.getByRole('textbox', { name: 'Title', exact: true }).inputValue()) === title);
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -67,7 +67,7 @@ try {
   await page.getByRole('button', { name: 'Action items', exact: true }).click();
   assert.match(await page.getByRole('textbox', { name: 'Question about selected recordings' }).inputValue(), /action items/);
   assert(await page.getByRole('button', { name: 'Send question' }).isDisabled(), 'Consent required');
-  await page.getByRole('checkbox', { name: 'Allow selected transcript text to be sent to Mistral.' }).check();
+  await page.getByRole('checkbox', { name: /Allow selected transcript text to be sent to mistral\./i }).check();
   assert(await page.getByRole('button', { name: 'Send question' }).isEnabled());
   await page.getByRole('radio', { name: 'History', exact: true }).click();
   await page.getByRole('heading', { name: 'Recent conversations' }).waitFor();

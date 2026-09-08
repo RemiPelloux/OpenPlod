@@ -1,2 +1,2 @@
 export type AiSource = { id: string; recordingId: string; title: string; versionId: string | null; origin: string; start: number | null; text: string; hash: string };
-export type AiAnswer = { id: string; conversationId: string; question: string; answer: string; sources: AiSource[]; citations: { sourceId: string; quote: string }[]; model: string; provider: 'mistral'; createdAt: string; trace: { stage: string; at: string }[] };
+export type AiAnswer = { id: string; conversationId: string; question: string; answer: string; sources: AiSource[]; citations: { sourceId: string; quote: string }[]; model: string; provider: 'mistral' | 'openai' | 'anthropic' | 'ollama'; usage?: Record<string, number> | null; createdAt: string; trace: { stage: string; at: string }[] };

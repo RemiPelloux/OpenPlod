@@ -1,12 +1,14 @@
 # OpenPlod 1.0.0 Roadmap
 
-Updated September 7, 2026. Baseline: experimental **0.4.1**.
+Updated September 8, 2026. Original baseline: experimental **0.4.1**; latest experimental prerelease: **0.5.0**.
+
+September 8 implementation update: **0.5.0 is an experimental prerelease**, with new speech/text adapters, shared settings, explicit privacy/fallback controls, persisted jobs, per-recording selection, and generated transcript provenance. [Detailed implementation status](docs/ai-providers.md) distinguishes code/tests from live acceptance. Checkboxes remain open until their full release gates are met; spending controls and large-file chunking are not implemented.
 
 **The 1.0 goal:** a dependable local recording vault that can extract from an authorized Plaud Note Pro, transcribe with the AI provider you choose, turn transcripts into useful knowledge, and synchronize with Android without losing audio or edits.
 
-This is a delivery plan, not a list of available features. All unchecked items are planned. Milestones describe sequence, not promised release dates. No feature is complete merely because its interface exists or a synthetic test passes.
+This is a delivery plan, not a list of available features. Unchecked items are planned or partially implemented with acceptance still pending. Milestones describe sequence, not promised release dates. No feature is complete merely because its interface exists or a synthetic test passes.
 
-## Where We Are
+## Original 0.4.1 Baseline
 
 | Area | Implemented baseline | Still to prove or complete |
 | --- | --- | --- |

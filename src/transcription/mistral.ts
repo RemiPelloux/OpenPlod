@@ -26,9 +26,10 @@ type MistralResponse = {
 };
 
 export function normalizeMistralTranscription(json: MistralResponse): TranscriptionResult {
+  if (!json || typeof json.text !== 'string') return failed('Mistral returned an invalid transcription response.');
   const fullText = typeof json.text === 'string' ? json.text.trim() : '';
   const segments: TranscriptSegment[] = Array.isArray(json.segments)
-    ? json.segments.map(segment => ({
+    ? json.segments.filter(segment => typeof segment.start === 'number' && Number.isFinite(segment.start) && segment.start >= 0 && typeof segment.end === 'number' && Number.isFinite(segment.end) && segment.end >= segment.start).map(segment => ({
         start: finiteNumber(segment.start),
         end: finiteNumber(segment.end),
         text: typeof segment.text === 'string' ? segment.text.trim() : '',
@@ -37,9 +38,8 @@ export function normalizeMistralTranscription(json: MistralResponse): Transcript
     : [];
   const duration = finiteNumber(json.duration)
     || (segments.length > 0 ? segments[segments.length - 1].end : 0);
-  const confidence = segments.length > 0
-    ? segments.reduce((total, segment) => total + segment.confidence, 0) / segments.length
-    : 0.9;
+  const knownConfidence = segments.map(segment => segment.confidence).filter((value): value is number => value !== null);
+  const confidence = knownConfidence.length ? knownConfidence.reduce((total, value) => total + value, 0) / knownConfidence.length : null;
 
   return {
     success: true,
@@ -47,7 +47,7 @@ export function normalizeMistralTranscription(json: MistralResponse): Transcript
     fullText,
     segments,
     wordCount: fullText.split(/\s+/).filter(Boolean).length,
-    speakerCount: 1,
+    speakerCount: null,
     confidence,
     duration,
     metadata: {
@@ -86,14 +86,17 @@ export class MistralEngine implements TranscriptionEngine {
     form.append('file', new Blob([new Uint8Array(buffer)], { type: mimetype }), filename);
     form.append('model', options?.model ?? DEFAULT_MODEL);
     form.append('timestamp_granularities[]', 'segment');
-    if (options?.language) form.append('language', options.language);
+    if (options?.language && options.language !== 'auto') form.append('language', options.language);
 
     try {
+      options?.signal?.throwIfAborted();
+      options?.onCheckpoint?.({ phase: 'submitting' });
       const response = await this.fetcher(MISTRAL_TRANSCRIPTION_URL, {
         method: 'POST',
+        redirect: 'error',
         headers: { Authorization: `Bearer ${this.apiKey}` },
         body: form,
-        signal: AbortSignal.timeout(180_000),
+        signal: AbortSignal.any([AbortSignal.timeout(180_000), ...(options?.signal ? [options.signal] : [])]),
       });
       if (!response.ok) {
         return failed(`Mistral transcription failed (${response.status} ${response.statusText || 'request error'}).`);
@@ -126,8 +129,8 @@ function finiteNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-function confidenceFromLogProbability(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return 0.9;
+function confidenceFromLogProbability(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   return Math.max(0, Math.min(1, Math.exp(value)));
 }
 

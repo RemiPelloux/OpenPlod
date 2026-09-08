@@ -26,15 +26,19 @@ export function updateTranscript(params: {
 
 export function saveGeneratedTranscript(params: {
   recordingId: string; fullText: string; segments: unknown;
-  wordCount: number; speakerCount: number; confidence: number;
+  wordCount: number; speakerCount: number | null; confidence: number | null;
+  fingerprint?: string | null; provenance?: Record<string, unknown>;
+  generationId?: string;
 }): boolean {
   return db.transaction(tx => {
     const recording = tx.select().from(recordings).where(eq(recordings.id, params.recordingId)).get();
-    if (!recording) return false;
+    if (!recording || recording.retentionState !== 'active') throw new Error('Recording is unavailable or in Trash.');
+    if (params.fingerprint !== undefined && params.fingerprint !== recording.fingerprint) throw new Error('Audio changed while transcription was running.');
     const current = tx.select().from(transcripts).where(eq(transcripts.recordingId, params.recordingId)).get();
-    const versionId = crypto.randomUUID();
+    const versionId = params.generationId || crypto.randomUUID();
+    if (tx.select().from(transcriptVersions).where(eq(transcriptVersions.id, versionId)).get()) return false;
     tx.insert(transcriptVersions).values({ id: versionId, recordingId: params.recordingId,
-      fullText: params.fullText, segments: params.segments, origin: 'generated', createdAt: new Date().toISOString() }).run();
+      fullText: params.fullText, segments: params.segments, origin: 'generated', provenance: params.provenance, createdAt: new Date().toISOString() }).run();
     tx.update(recordings).set({ revision: recording.revision + 1 }).where(eq(recordings.id, recording.id)).run();
     // Reprocessing adds a generated version without replacing an edited document.
     if (current?.origin === 'edited') return false;

@@ -47,7 +47,7 @@ export interface SearchResult {
 }
 
 export interface Settings {
-  transcriptionEngine: 'whisper' | 'mistral' | 'deepgram'
+  transcriptionEngine: 'whisper' | 'mistral' | 'deepgram' | 'openai' | 'assemblyai'
   mistralApiKey?: string
   deepgramApiKey?: string
   mistralApiKeyConfigured?: boolean
@@ -66,6 +66,7 @@ export interface Settings {
 }
 
 export interface TranscriptVersion {
+  provenance?: { provider?: string; model?: string; fingerprint?: string; startedAt?: string; completedAt?: string; usage?: Record<string, number> | null; options?: Record<string, unknown> } | null
   segments?: string | { start: number; end: number; text: string; speaker?: number | string }[] | null
   id: string
   recordingId: string
@@ -287,8 +288,8 @@ export const api = {
     return mapRecording(res.data)
   },
 
-  transcribe: async (id: string): Promise<void> => {
-    await fetchJSON(`/recordings/${id}/reprocess`, { method: 'POST' })
+  transcribe: async (id: string, options?: Record<string, unknown>): Promise<void> => {
+    await fetchJSON(`/recordings/${id}/reprocess`, { method: 'POST', ...(options ? { body: JSON.stringify(options) } : {}) })
   },
 
   summarize: async (id: string): Promise<void> => {
@@ -305,7 +306,7 @@ export const api = {
     const d = res.data
     const engine = typeof d.transcriptionEngine === 'string' ? d.transcriptionEngine : ''
     return {
-      transcriptionEngine: ['whisper', 'mistral', 'deepgram'].includes(engine)
+      transcriptionEngine: ['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai'].includes(engine)
         ? engine as Settings['transcriptionEngine']
         : 'whisper',
       mistralApiKey: typeof d.mistralApiKey === 'string' ? d.mistralApiKey : '',

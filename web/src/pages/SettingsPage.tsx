@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { api, type Settings } from '@/lib/api'
 import { getRuntime } from '@/lib/runtime'
 import { buildInfo, buildLabel } from '@/lib/build-info'
+import { AiSettingsPanel } from '@/components/AiSettingsPanel'
 
 function Toggle({ checked, onChange, label, description }: { checked: boolean; onChange: (v: boolean) => void; label: string; description: string }) {
   return (
@@ -28,12 +29,6 @@ function Toggle({ checked, onChange, label, description }: { checked: boolean; o
     </div>
   )
 }
-
-const engines = [
-  { id: 'whisper' as const, name: 'Whisper (Local)', desc: 'Free, runs on your machine. Slower but private.' },
-  { id: 'mistral' as const, name: 'Mistral Voxtral', desc: 'Fast multilingual cloud transcription with timestamps.' },
-  { id: 'deepgram' as const, name: 'Deepgram', desc: 'High accuracy with diarization. Requires API key.' },
-]
 
 export function SettingsPage() {
   const { hash } = useLocation()
@@ -64,12 +59,13 @@ export function SettingsPage() {
     openWhistleAgentId: '',
   })
   const [saving, setSaving] = useState(false)
+  const [loaded, setLoaded] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const savedTimer = useRef<number | null>(null)
 
   useEffect(() => {
-    api.getSettings().then(setSettings).catch(loadError => {
+    api.getSettings().then(value => { setSettings(value); setLoaded(true) }).catch(loadError => {
       setError(loadError instanceof Error ? loadError.message : 'Could not load settings')
     })
     return () => {
@@ -81,7 +77,8 @@ export function SettingsPage() {
     setSaving(true)
     setError('')
     try {
-      setSettings(await api.updateSettings(settings))
+      const general = Object.fromEntries(Object.entries(settings).filter(([key]) => !['transcriptionEngine', 'mistralApiKey', 'deepgramApiKey'].includes(key))) as Partial<Settings>
+      setSettings(await api.updateSettings(general))
       setSaved(true)
       if (savedTimer.current) window.clearTimeout(savedTimer.current)
       savedTimer.current = window.setTimeout(() => setSaved(false), 2000)
@@ -100,7 +97,7 @@ export function SettingsPage() {
         <div>
           <h1>Settings</h1>
         </div>
-        <Button onClick={save} disabled={saving}>
+        <Button onClick={save} disabled={saving || !loaded}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
           {saved ? 'Saved!' : 'Save'}
         </Button>
@@ -123,71 +120,7 @@ export function SettingsPage() {
         <Button asChild variant="outline" className="mt-4"><Link to="/android"><Smartphone />Android connection</Link></Button>
       </details>
 
-      {/* Transcription Engine */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Transcription Engine</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {engines.map(engine => (
-            <button
-              type="button"
-              key={engine.id}
-              onClick={() => update({ transcriptionEngine: engine.id })}
-              className={`flex w-full items-center gap-4 rounded-lg border-2 p-4 text-left transition-colors ${
-                settings.transcriptionEngine === engine.id
-                  ? 'border-primary bg-primary/5'
-                  : 'border-transparent bg-secondary/50 hover:bg-secondary'
-              }`}
-            >
-              <div className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${
-                settings.transcriptionEngine === engine.id ? 'border-primary' : 'border-muted-foreground/30'
-              }`}>
-                {settings.transcriptionEngine === engine.id && (
-                  <div className="h-2 w-2 rounded-full bg-primary" />
-                )}
-              </div>
-              <div>
-                <p className="text-sm font-medium">{engine.name}</p>
-                <p className="text-xs text-muted-foreground">{engine.desc}</p>
-              </div>
-            </button>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* API Keys */}
-      {(settings.transcriptionEngine === 'mistral' || settings.transcriptionEngine === 'deepgram') && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">API Keys</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {settings.transcriptionEngine === 'mistral' && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Mistral API key</label>
-                <Input
-                  type="password"
-                  placeholder={settings.mistralApiKeyConfigured ? 'Saved key (enter a new key to replace)' : 'Enter your Mistral API key'}
-                  value={settings.mistralApiKey || ''}
-                  onChange={e => update({ mistralApiKey: e.target.value })}
-                />
-              </div>
-            )}
-            {settings.transcriptionEngine === 'deepgram' && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Deepgram API Key</label>
-                <Input
-                  type="password"
-                  placeholder={settings.deepgramApiKeyConfigured ? 'Saved key (enter a new key to replace)' : 'Enter your Deepgram API key'}
-                  value={settings.deepgramApiKey || ''}
-                  onChange={e => update({ deepgramApiKey: e.target.value })}
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      <AiSettingsPanel />
 
       {/* Sync */}
       <Card>

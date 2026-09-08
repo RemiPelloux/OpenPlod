@@ -97,8 +97,8 @@ try {
   const create = page.getByRole('button', { name: 'Create document', exact: true });
   if (await create.isEnabled()) {
     await create.click();
-    await page.getByRole('dialog', { name: 'Create document with Mistral' }).waitFor();
-    await page.getByRole('button', { name: 'Generate with Mistral', exact: true }).waitFor();
+    await page.getByRole('dialog', { name: 'Create AI document' }).waitFor();
+    await page.getByRole('button', { name: 'Generate document', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.getByRole('textbox', { name: 'Ask AI about this recording' }).fill('Summarize this recording');
     await page.getByRole('button', { name: 'Ask AI', exact: true }).click();

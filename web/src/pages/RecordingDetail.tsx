@@ -35,6 +35,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { PlaybackSpeedMenu } from '@/components/PlaybackSpeedMenu'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { SaveTranscriptDialog } from '@/components/NoteDialogs'
+import { TranscribeDialog } from '@/components/TranscribeDialog'
 import { RecordingBookmarks } from '@/components/RecordingBookmarks'
 import { SegmentEditor } from '@/components/SegmentEditor'
 import { api, type Recording, type TranscriptSegment, type TranscriptVersion } from '@/lib/api'
@@ -68,6 +69,7 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [action, setAction] = useState<BusyAction>(null)
+  const [transcribeOpen, setTranscribeOpen] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [currentTime, setCurrentTime] = useState(0)
@@ -174,16 +176,12 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
 
   const runAction = async (nextAction: 'transcribing' | 'summarizing') => {
     if (!id) return
+    if (nextAction === 'transcribing') { setTranscribeOpen(true); return }
     setAction(nextAction)
     setError('')
     try {
-      if (nextAction === 'transcribing') {
-        await api.transcribe(id)
-        setRecording(current => current ? { ...current, status: 'pending' } : current)
-      } else {
         await api.summarize(id)
         await loadRecording()
-      }
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Action failed')
     } finally {
@@ -298,6 +296,7 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
 
   return (
     <div className="recording-page">
+      {transcribeOpen && <TranscribeDialog recordingId={recording.id} title={recording.title} onClose={() => setTranscribeOpen(false)} onQueued={() => { setRecording(current => current ? { ...current, status: 'pending' } : current) }} />}
       <header className="recording-toolbar">
         <Link to={backPath} className="recording-back" aria-label={backPath === '/transcripts' ? 'Back to transcripts' : 'Back to library'}><ArrowLeft /></Link>
         <div className="recording-title-block">
@@ -461,6 +460,13 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
                 ))}
               </div>
             ) : <p className="inspector-muted">Versions appear after transcription or an edit.</p>}
+            {selectedVersion?.provenance && <dl className="grid gap-2 py-3 text-xs break-words">
+              <div><dt className="text-muted-foreground">Provider / model</dt><dd>{selectedVersion.provenance.provider} / {selectedVersion.provenance.model}</dd></div>
+              <div><dt className="text-muted-foreground">Source SHA-256</dt><dd>{selectedVersion.provenance.fingerprint || 'Unknown'}</dd></div>
+              <div><dt className="text-muted-foreground">Completed</dt><dd>{selectedVersion.provenance.completedAt || 'Unknown'}</dd></div>
+              <div><dt className="text-muted-foreground">Reported usage</dt><dd>{selectedVersion.provenance.usage ? JSON.stringify(selectedVersion.provenance.usage) : 'Not reported'}</dd></div>
+              <div><dt className="text-muted-foreground">Options</dt><dd>{JSON.stringify(selectedVersion.provenance.options || {})}</dd></div>
+            </dl>}
           </section>
         </aside>
       </div>

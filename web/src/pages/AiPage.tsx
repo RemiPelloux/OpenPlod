@@ -11,8 +11,9 @@ import { aiRequest, askRecordings, type AiAnswer, type AiConversation } from '@/
 import { exportDocument } from '@/lib/document-export'
 import { formatDuration } from '@/lib/utils'
 import './ai.css'
+import { aiSettingsApi } from '@/lib/ai-settings'
 
-const stages: Record<string, string> = { context: 'Reading selected transcripts', mistral: 'Mistral is answering', citations: 'Checking source citations', saved: 'Saving answer' }
+const stages: Record<string, string> = { context: 'Reading selected transcripts', mistral: 'Mistral is answering', openai: 'OpenAI is answering', anthropic: 'Anthropic is answering', ollama: 'Ollama is answering locally', citations: 'Checking source citations', saved: 'Saving answer' }
 const prompts = [
   { label: 'Summary', prompt: 'Summarize the selected recordings.', icon: FileText },
   { label: 'Action items', prompt: 'Extract action items and owners from the selected recordings.', icon: ListChecks },
@@ -27,6 +28,8 @@ export function AiPage() {
   const [answers, setAnswers] = useState<AiAnswer[]>([])
   const [question, setQuestion] = useState(() => (params.get('question') || '').slice(0, 4000))
   const [consent, setConsent] = useState(false)
+  const [provider, setProvider] = useState('')
+  useEffect(() => { let active = true; aiSettingsApi.get().then(value => { if (active) setProvider(value.chatProvider) }).catch(() => {}); return () => { active = false } }, [])
   const [loading, setLoading] = useState(true)
   const [more, setMore] = useState(false)
   const [stage, setStage] = useState('')
@@ -64,7 +67,7 @@ export function AiPage() {
     const controller = new AbortController(); active.current = controller; const ticket = ++request.current
     setError(''); setStage('context')
     try {
-      const answer = await askRecordings({ id: crypto.randomUUID(), conversationId, question, recordingIds: selected, consent: true }, value => { if (ticket === request.current) setStage(value) }, controller.signal)
+      const answer = await askRecordings({ id: crypto.randomUUID(), conversationId, question, recordingIds: selected, consent: true, expectedProvider: provider }, value => { if (ticket === request.current) setStage(value) }, controller.signal)
       if (ticket !== request.current) return
       setAnswers(rows => [...rows, answer]); setQuestion('')
       setHistoryRefresh(value => value + 1)
@@ -84,7 +87,7 @@ export function AiPage() {
     catch (e) { if (!controller.signal.aborted) setError((e as Error).message) } finally { if (!controller.signal.aborted) setLoading(false) }
   }
   const exportAnswer = async (answer: AiAnswer) => {
-    try { await exportDocument({ filename: `openplod-answer-${answer.id}.md`, mime: 'text/markdown', content: `# ${answer.question}\n\n${answer.answer}\n\n## Sources\n\n${answer.citations.map(c => { const source = answer.sources.find(s => s.id === c.sourceId)!; return `- [${c.sourceId}] ${source.title}${source.start === null ? '' : ` (${formatDuration(source.start)})`}: ${c.quote}` }).join('\n')}\n\nMistral / ${answer.model}` }) }
+    try { await exportDocument({ filename: `openplod-answer-${answer.id}.md`, mime: 'text/markdown', content: `# ${answer.question}\n\n${answer.answer}\n\n## Sources\n\n${answer.citations.map(c => { const source = answer.sources.find(s => s.id === c.sourceId)!; return `- [${c.sourceId}] ${source.title}${source.start === null ? '' : ` (${formatDuration(source.start)})`}: ${c.quote}` }).join('\n')}\n\n${answer.provider} / ${answer.model}` }) }
     catch (e) { setError((e as Error).message) }
   }
   const copyAnswer = async (answer: AiAnswer) => {
@@ -92,7 +95,7 @@ export function AiPage() {
     catch { setError('Clipboard unavailable. Export the answer as Markdown instead.') }
   }
   return <div className={`ai-page ${panelOpen ? 'panel-open' : ''}`}>
-    <header className="ai-heading"><div><h1>AI Chat</h1><span>Mistral</span></div><div className="ai-heading-actions"><IconButton label="Toggle sources and history" aria-expanded={panelOpen} aria-controls="ai-context-panel" onClick={() => setPanelOpen(v => !v)}><ListTree /></IconButton><Button variant="outline" size="sm" onClick={() => { fresh(); setQuestion(''); composer.current?.focus() }}><Plus />New conversation</Button></div></header>
+    <header className="ai-heading"><div><h1>AI Chat</h1><span className="capitalize">{provider || 'Provider unavailable'}</span></div><div className="ai-heading-actions"><IconButton label="Toggle sources and history" aria-expanded={panelOpen} aria-controls="ai-context-panel" onClick={() => setPanelOpen(v => !v)}><ListTree /></IconButton><Button variant="outline" size="sm" onClick={() => { fresh(); setQuestion(''); composer.current?.focus() }}><Plus />New conversation</Button></div></header>
     <div className="ai-workspace">
       <aside id="ai-context-panel" className="ai-context" aria-label="Recording context">
         <div className="ai-panel-toolbar"><ToggleGroup type="single" value={panel} onValueChange={v => { if (v) setPanel(v) }} aria-label="Chat sidebar"><ToggleGroupItem value="sources"><FileAudio />Sources</ToggleGroupItem><ToggleGroupItem value="history"><History />History</ToggleGroupItem></ToggleGroup></div>
@@ -125,7 +128,7 @@ export function AiPage() {
           {error && <p className="device-error" role="alert">{error}</p>}
           <div className="ai-selected-sources">{selected.slice(0, 3).map(id => <span key={id}><FileAudio /><span>{recordings.find(r => r.recordingId === id)?.filename || 'Saved recording source'}</span>{!answers.length && !stage && !opening && <IconButton type="button" label={`Remove source ${recordings.find(r => r.recordingId === id)?.filename || 'recording'}`} onClick={() => setSelected(rows => rows.filter(value => value !== id))}><X /></IconButton>}</span>)}{selected.length > 3 && <small>+{selected.length - 3}</small>}</div>
           <div className="ai-input"><textarea ref={composer} aria-label="Question about selected recordings" placeholder="Ask about your recordings..." rows={3} maxLength={4000} value={question} disabled={!!stage || opening} onChange={e => setQuestion(e.target.value)} />{stage ? <IconButton type="button" variant="outline" label="Cancel question" onClick={() => active.current?.abort()}><Square /></IconButton> : <IconButton type="submit" variant="default" disabled={!consent || !selected.length || !question.trim() || loading || opening} label="Send question"><ArrowUp /></IconButton>}</div>
-          <div className="ai-composer-footer"><label className="ai-consent"><input type="checkbox" checked={consent} disabled={!!stage} onChange={e => setConsent(e.target.checked)} /><span>Allow selected transcript text to be sent to Mistral.</span></label><span>{question.length}/4000</span></div>
+          <div className="ai-composer-footer"><label className="ai-consent"><input type="checkbox" checked={consent} disabled={!!stage || !provider} onChange={e => setConsent(e.target.checked)} /><span>{provider === 'ollama' ? 'Allow local Ollama to process selected transcripts.' : `Allow selected transcript text to be sent to ${provider || 'the configured provider'}.`}</span></label><span>{question.length}/4000</span></div>
         </form>
       </section>
     </div>

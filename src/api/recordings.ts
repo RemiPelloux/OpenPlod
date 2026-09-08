@@ -222,10 +222,10 @@ app.patch('/:id/transcript', async c => {
 
 app.get('/:id/transcript/versions', async c => {
   const rows = sqlite.query(`
-    SELECT id, recording_id AS recordingId, full_text AS fullText, segments, origin, created_at AS createdAt
+    SELECT id, recording_id AS recordingId, full_text AS fullText, segments, origin, provenance, created_at AS createdAt
     FROM transcript_versions WHERE recording_id = ? ORDER BY created_at DESC, rowid DESC
   `).all(c.req.param('id'));
-  return c.json({ success: true, data: rows });
+  return c.json({ success: true, data: rows.map(row => { const value = row as Record<string, unknown>; return { ...value, provenance: typeof value.provenance === 'string' ? JSON.parse(value.provenance) : null }; }) });
 });
 
 app.post('/:id/forward', async c => {
@@ -434,10 +434,21 @@ app.post('/:id/reprocess', async (c) => {
   const id = c.req.param('id');
   try {
     const [recording] = await db.select().from(recordings).where(eq(recordings.id, id)).limit(1);
-    if (!recording) return c.json({ success: false, error: 'Not found' }, 404);
-
+    if (!recording || recording.retentionState !== 'active') return c.json({ success: false, error: 'Active recording not found' }, 404);
+    const { aiConfigSchema, readAiConfig } = await import('../ai/config');
+    const body = await c.req.text();
+    let config;
+    try {
+      const overrides = body.trim() ? JSON.parse(body) : {};
+      if (Object.keys(overrides).some(key => !key.startsWith('transcription'))) throw new Error('Unsupported override');
+      config = aiConfigSchema.parse({ ...readAiConfig(sqlite), ...overrides });
+      const { assertPrivacy } = await import('../ai/config');
+      const { validateSpeechOptions } = await import('../ai/capabilities');
+      assertPrivacy(readAiConfig(sqlite), config.transcriptionEngine);
+      validateSpeechOptions(config.transcriptionEngine, { model: config.transcriptionModel, diarize: config.transcriptionDiarize, vocabulary: config.transcriptionVocabulary });
+    } catch { return c.json({ success: false, error: 'Invalid or privacy-blocked transcription options.' }, 400); }
     await db.update(recordings).set({ status: 'pending', errorMessage: null, processedAt: null }).where(eq(recordings.id, id));
-    await jobQueue.add('process-recording', { recordingId: id, filePath: recording.filePath });
+    await jobQueue.add('process-recording', { recordingId: id, filePath: recording.filePath, config });
 
     return c.json({ success: true, message: 'Queued for reprocessing' });
   } catch (error) {

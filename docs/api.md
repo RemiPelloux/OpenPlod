@@ -1,5 +1,7 @@
 # OpenPlod API
 
+The 0.5 development build adds [AI provider settings, connection checks, and durable job controls](ai-providers.md#apis). These routes use the same authentication below. Provider live acceptance and spending controls remain open release gates.
+
 The organizer API is rooted at `/api/v1`. It runs inside the existing desktop service, normally `http://127.0.0.1:3487`. Existing recording and transcript endpoints remain backward compatible.
 
 ## Authentication and Exposure

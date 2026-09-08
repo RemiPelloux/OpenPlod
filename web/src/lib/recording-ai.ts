@@ -6,7 +6,7 @@ export async function aiRequest<T>(path: string, signal?: AbortSignal): Promise<
   const response = await fetch(apiUrl(`/ai${path}`), { headers: authenticatedHeaders(), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) })
   const body = await response.json(); if (!response.ok || !body.success) throw new Error(body.error || 'AI workspace unavailable.'); return body.data
 }
-export async function askRecordings(data: { id: string; conversationId: string; recordingIds: string[]; question: string; consent: true }, onStage: (stage: string) => void, signal: AbortSignal): Promise<AiAnswer> {
+export async function askRecordings(data: { id: string; conversationId: string; recordingIds: string[]; question: string; consent: true; expectedProvider?: string }, onStage: (stage: string) => void, signal: AbortSignal): Promise<AiAnswer> {
   const response = await fetch(apiUrl('/ai/ask'), { method: 'POST', headers: authenticatedHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data), signal: AbortSignal.any([signal, AbortSignal.timeout(110000)]) })
   if (!response.ok || !response.body) { const payload = await response.json().catch(() => null); throw new Error(payload?.error || 'AI request failed.') }
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()

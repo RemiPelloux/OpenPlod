@@ -7,7 +7,7 @@ export interface TranscriptSegment {
   end: number;
   text: string;
   speaker?: number;
-  confidence: number;
+  confidence: number | null;
 }
 
 export interface TranscriptionResult {
@@ -16,8 +16,8 @@ export interface TranscriptionResult {
   fullText: string;
   segments: TranscriptSegment[];
   wordCount: number;
-  speakerCount: number;
-  confidence: number;
+  speakerCount: number | null;
+  confidence: number | null;
   duration: number;
   error?: string;
   metadata?: Record<string, unknown>;
@@ -32,6 +32,10 @@ export interface TranscriptionOptions {
   model?: string;
   /** Number of threads for local processing */
   threads?: number;
+  vocabulary?: string[];
+  signal?: AbortSignal;
+  checkpoint?: { phase: string; remoteId?: string };
+  onCheckpoint?: (checkpoint: { phase: string; remoteId?: string }) => void;
 }
 
 export interface TranscriptionEngine {

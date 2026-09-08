@@ -57,6 +57,8 @@ export function initializeOrganizer(database: Database) {
       INSERT INTO note_fts(document_id, title, content) VALUES(new.id, new.title, new.content);
     END;
   `);
+  const generationColumns = database.query('PRAGMA table_info(note_generations)').all() as { name: string }[];
+  if (!generationColumns.some(column => column.name === 'provider')) database.exec("ALTER TABLE note_generations ADD COLUMN provider TEXT NOT NULL DEFAULT 'mistral'");
 }
 
 export class OrganizerStore {

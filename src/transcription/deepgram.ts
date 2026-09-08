@@ -2,7 +2,7 @@
  * Deepgram transcription engine — lazy-loads @deepgram/sdk to avoid import failures.
  */
 
-import { readFileSync } from 'fs';
+import { readFile } from 'node:fs/promises';
 import type { TranscriptionEngine, TranscriptionResult, TranscriptionOptions, TranscriptSegment } from './types.js';
 
 export class DeepgramEngine implements TranscriptionEngine {
@@ -30,31 +30,23 @@ export class DeepgramEngine implements TranscriptionEngine {
   }
 
   async transcribeFile(filePath: string, options?: TranscriptionOptions): Promise<TranscriptionResult> {
-    const buffer = readFileSync(filePath);
-    return this.transcribeBuffer(buffer, 'audio/mp4', options);
+    const buffer = await readFile(filePath);
+    return this.transcribeBuffer(buffer, Bun.file(filePath).type || 'application/octet-stream', options);
   }
 
   async transcribeBuffer(buffer: Buffer, mimetype: string, options?: TranscriptionOptions): Promise<TranscriptionResult> {
-    const client = this.getClient();
-    if (!client) return this.fail('DEEPGRAM_API_KEY not set or SDK unavailable');
-
+    if (!this.apiKey) return this.fail('Deepgram API key is not configured.');
+    const signal = AbortSignal.any([AbortSignal.timeout(180000), ...(options?.signal ? [options.signal] : [])]);
     try {
-      const dgOptions: any = {
-        model: (options?.model as any) || 'nova-2',
-        smart_format: true,
-        diarize: options?.diarize !== false,
-        punctuate: true,
-        paragraphs: true,
-        utterances: true,
-        detect_language: !options?.language,
-      };
-      if (options?.language) dgOptions.language = options.language;
-
-      const response = await client.listen.prerecorded.transcribeFile(buffer, dgOptions);
-      if (!response.result) return this.fail('No result from Deepgram');
-      return this.parseResult(response.result);
-    } catch (error: any) {
-      return this.fail(error.message);
+      const query = new URLSearchParams({ model: options?.model || 'nova-2', smart_format: 'true', punctuate: 'true', paragraphs: 'true', utterances: 'true' });
+      if (options?.diarize) query.set('diarize_model', 'v1');
+      if (options?.language && options.language !== 'auto') query.set('language', options.language); else query.set('detect_language', 'true');
+      signal.throwIfAborted(); options?.onCheckpoint?.({ phase: 'submitting' });
+      const response = await fetch(`https://api.deepgram.com/v1/listen?${query}`, { method: 'POST', redirect: 'error', headers: { Authorization: `Token ${this.apiKey}`, 'Content-Type': mimetype }, body: new Uint8Array(buffer), signal });
+      if (!response.ok) return this.fail(`Deepgram request failed (HTTP ${response.status}).`);
+      const result = this.parseResult(await response.json()); signal.throwIfAborted(); return result;
+    } catch {
+      return this.fail(signal.aborted ? 'Deepgram request cancelled or timed out.' : 'Deepgram returned an invalid response or could not be reached.');
     }
   }
 
@@ -77,7 +69,7 @@ export class DeepgramEngine implements TranscriptionEngine {
       if (!response.result) return this.fail('No result from Deepgram');
       return this.parseResult(response.result);
     } catch (error: any) {
-      return this.fail(error.message);
+      return this.fail('Deepgram could not transcribe this URL.');
     }
   }
 
@@ -102,7 +94,7 @@ export class DeepgramEngine implements TranscriptionEngine {
             end: sentence.end || 0,
             text: (sentence.text || '').trim(),
             speaker: paragraph.speaker,
-            confidence: 1.0,
+            confidence: null,
           });
         }
       }
@@ -121,7 +113,8 @@ export class DeepgramEngine implements TranscriptionEngine {
     }
 
     const speakers = new Set(segments.map(s => s.speaker).filter(s => s !== undefined));
-    const avgConfidence = words.length > 0 ? words.reduce((sum: number, w: any) => sum + (w.confidence || 0), 0) / words.length : 0;
+    const confidences = words.map((word: any) => word.confidence).filter((value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1);
+    const avgConfidence = confidences.length ? confidences.reduce((sum: number, value: number) => sum + value, 0) / confidences.length : null;
 
     return {
       success: true,
@@ -129,9 +122,10 @@ export class DeepgramEngine implements TranscriptionEngine {
       fullText,
       segments,
       wordCount: words.length || fullText.split(/\s+/).filter(Boolean).length,
-      speakerCount: speakers.size || 1,
+      speakerCount: speakers.size || null,
       confidence: avgConfidence,
       duration: result.metadata?.duration || 0,
+      metadata: { model: 'nova-2', language: channel.detected_language ?? null, usage: null },
     };
   }
 }
