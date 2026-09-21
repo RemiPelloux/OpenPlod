@@ -1,8 +1,9 @@
 import { chacha20poly1305 } from '@noble/ciphers/chacha.js';
 
 // The device defines the per-session nonce/AD. Never reuse these keys across connections.
-// RSA PKCS#1 v1.5 unwrapping must use the native macOS Security framework, not Bun's
-// privateDecrypt (which rejects that padding). This layer receives only unwrapped bytes.
+// RSA PKCS#1 v1.5 unwrapping must happen inside the native Bluetooth bridge (the
+// `plaud-bridge` binary on every desktop, or the opt-in macOS Swift fallback), because
+// Bun's `privateDecrypt` rejects that padding. This layer receives only unwrapped bytes.
 export class PlaudSessionCipher {
   private key: Buffer;
   private nonce: Buffer;

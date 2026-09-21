@@ -6,9 +6,9 @@
 <p align="center"><strong>Local-first Plaud Note Pro recording vault, transcription, and Markdown workspace.</strong></p>
 <p align="center">Import directly over Bluetooth. Keep your original audio. Turn recordings into structured documents and source-linked AI conversations.</p>
 <p align="center">
-  <a href="https://github.com/RemiPelloux/OpenPlod/releases/tag/v0.5.0"><img alt="Experimental release 0.5.0" src="https://img.shields.io/badge/release-0.5.0%20experimental-3975EE?style=flat-square" /></a>
+  <a href="https://github.com/RemiPelloux/OpenPlod/releases/tag/v0.6.0"><img alt="Experimental release 0.6.0" src="https://img.shields.io/badge/release-0.6.0%20experimental-3975EE?style=flat-square" /></a>
   <a href="https://github.com/RemiPelloux/OpenPlod/actions/workflows/ci.yml"><img alt="CI source checks" src="https://github.com/RemiPelloux/OpenPlod/actions/workflows/ci.yml/badge.svg" /></a>
-  <img alt="macOS Apple Silicon" src="https://img.shields.io/badge/macOS-Apple%20Silicon-111113?style=flat-square" />
+  <img alt="macOS, Linux and Windows desktop" src="https://img.shields.io/badge/desktop-macOS%20%7C%20Linux%20%7C%20Windows-111113?style=flat-square" />
   <a href="docs/mcp.md"><img alt="MCP read-only by default" src="https://img.shields.io/badge/MCP-read--only%20by%20default-197A68?style=flat-square" /></a>
   <a href="LICENSING.md"><img alt="MIT license for OpenPlod contributions; see licensing scope" src="https://img.shields.io/badge/license-MIT-197A68?style=flat-square" /></a>
   <a href="https://github.com/sponsors/RemiPelloux"><img alt="Sponsor Remi Pelloux" src="https://img.shields.io/badge/Sponsor-Remi%20Pelloux-DB2777?style=flat-square" /></a>
@@ -25,16 +25,57 @@
   <a href="https://github.com/RemiPelloux/OpenPlod/issues">Report an issue</a>
 </p>
 
-OpenPlod brings recording, playback, transcription, and export into one desktop-first workspace. The Mac app owns the durable audio vault; the Android companion pairs over your private network and can extract directly from an enrolled Note Pro. Keep recordings on your Plaud, keep a copy on your computer, and work with transcripts as documents.
+OpenPlod brings recording, playback, transcription, and export into one desktop-first workspace. The desktop app owns the durable audio vault on macOS, Linux, and Windows; the Android companion pairs over your private network and can extract directly from an enrolled Note Pro. Keep recordings on your Plaud, keep a copy on your computer, and work with transcripts as documents.
 
 > [!IMPORTANT]
-> **0.5.0 is an experimental prerelease, not a plug-and-play Plaud replacement.** Direct Bluetooth extraction has been verified on one authorized Plaud Note Pro. Other devices and firmware are not established. Initial desktop authorization still requires a privately provisioned identity; there is no self-service authorization wizard yet. You can use the recording vault, microphone, file imports, transcripts, and documents without a Plaud identity.
+> **0.6.0 is an experimental prerelease, not a plug-and-play Plaud replacement.** Direct Bluetooth extraction has been verified on one authorized Plaud Note Pro. Other devices and firmware are not established. The recorder still refuses audio until this computer holds a Plaud-minted identity, so authorization is required on every platform. You can use the recording vault, microphone, file imports, transcripts, and documents without a Plaud identity.
 
 ![OpenPlod desktop recording library in dark mode; private titles are redacted](docs/images/recording-library.png)
 
 *Actual application and local vault, with the Export tab selected. Private recording titles and tags are masked; no mock records or fabricated processing results are shown.*
 
-## New in 0.5.0
+## New in 0.6.0
+
+**Transcript Studio** — a new Studio mode on the recording page, with five tabs:
+
+- **Edit** — speaker rename/merge, segment split/merge, and find/replace with match-case, whole-word
+  and per-speaker scoping. Preview before applying; undo restores the previous version.
+- **Versions** — a word-level diff that labels each change as your correction, a regeneration, your
+  own revision, or model output replacing your edit. Promotion never discards the replaced version.
+- **AI cleanup** — punctuation, paragraphs, optional filler removal and headings, shown as a diff and
+  saved only when you accept. Translation is stored as its own lineage and never replaces the original.
+- **Structure** — chapters, decisions, action items and open questions, with SRT/VTT subtitles and
+  Markdown, CSV, JSON and print-ready exports.
+- **Actions** — save an instruction once and re-run it on any transcript.
+
+Also: playback following with word-level highlighting where a provider supplies word timings, seven
+document templates (notes, meeting minutes, interview, lecture, brief, PRD, follow-up email), and
+batch transcription with per-item status, cancellation and retry-failed-only.
+
+**What it refuses to do is the point.** Models are never allowed to emit a timestamp — they cite a
+segment index and the time is read from your own data, so an invented citation produces no link
+rather than a convincing-looking time. An unstated owner or due date stays unknown instead of being
+guessed. Subtitles are refused, with the reason, when a provider returned no real timing. Nothing is
+written on a first click, and a batch tells you what it will run before it runs it.
+
+**Not verified:** the 0.6.0 exit gate — real-audio acceptance across multiple speakers, French and
+English, silence, noise and a long recording — has not been run, and no AI path has been exercised
+against a live provider. See the [0.6.0 changelog](CHANGELOG.md#060---2026-09-21) for the full list.
+
+## Previously in 0.5.1
+
+0.5.1 was a platform patch on 0.5.0 that made Bluetooth cross-platform.
+
+- **One Bluetooth bridge on every desktop.** `plaud-bridge` (Rust + [`btleplug`](https://github.com/deviceplug/btleplug)) is now the default on macOS, Linux, and Windows, binding CoreBluetooth, BlueZ, and WinRT under one protocol. The macOS Swift helpers remain only as an opt-in fallback (`OPENPLOD_BLE_BACKEND=swift`) and are never selected automatically.
+- **Host autodetection.** The Plaud page has a "This computer" panel that checks the platform, bridge, adapter power, `ffmpeg`/`ffprobe`, and recorder authorization separately, and names the fix for the platform it is running on. Previously any one of these failing showed the same "Bluetooth scan failed".
+- **`bun run doctor`.** The same report from a terminal, with `--json` for bug reports. It exits non-zero when something blocks direct transfer, so it works as a setup gate.
+- **`plaud-bridge doctor`.** A non-scanning host check that reports the backend, adapter, and power state. It succeeds even with no adapter, so the vault renders a diagnosis instead of an error.
+- **Scan reliability.** The scan probe now gets the same connect budget as the transfer path. A cold BlueZ cache made the first scan after boot report a healthy recorder as unreachable.
+- **Linux and Windows packaging.** `.deb`/`.rpm` bundles declare their BlueZ, D-Bus, and ffmpeg dependencies, and CI builds and lints the bridge on Linux, macOS, and Windows.
+
+**Verified on Linux with real hardware:** an authorized Plaud Note Pro (protocol 20) was discovered, connected, and its GATT command service opened on Arch Linux via BlueZ. No new device models or firmware are claimed, and no end-to-end Linux audio download is claimed — that still needs a provisioned identity.
+
+## Previously in 0.5.0
 
 - Separate transcription, summary, document, and chat provider settings. Existing Mistral keys are retained.
 - OpenAI and AssemblyAI speech adapters; OpenAI, Anthropic, and local Ollama text adapters.
@@ -124,19 +165,21 @@ The shared React interface uses shadcn-style Radix controls, original custom SVG
 | Capability | Status in 0.5.0 (historical hardware evidence unless noted) |
 | --- | --- |
 | macOS desktop vault | Built and tested on Apple Silicon |
-| Mac -> Note Pro Bluetooth download | Real recording listed, downloaded, decoded, imported, and played; source session retained |
+| Linux desktop vault | Builds and runs on Arch/Omarchy (Hyprland); BLE discovery and connection verified against a real Note Pro over BlueZ |
+| Mac / Linux -> Note Pro Bluetooth download | Real recording listed, downloaded, decoded, imported, and played on macOS; the same bridge transport runs on Linux |
 | Account-free initial authorization | Not verified; the successful test used existing account authorization for device keys |
 | Android -> Note Pro | Direct encrypted Bluetooth listing, download, playable Opus, and source retention verified on one authorized Note Pro |
 | Android device authorization | One-time encrypted enrollment approved on the already-authorized Mac; subsequent extraction works without the Mac |
 | Android native-library alignment | APK ZIP and ARM64 libraries pass 16 KB alignment checks; runtime on a 16 KB device still unverified |
-| iOS, Windows, Linux direct extraction | Not verified; the current direct transport requires macOS CoreBluetooth |
+| Windows desktop vault | The bridge builds for WinRT, but extraction is not verified on hardware |
+| iOS direct extraction | Not supported; only the macOS, Linux, and Android clients talk to the device directly |
 | Signed store-ready distribution | Not available; Mac ZIP is ad-hoc signed and not notarized |
 
 ## Get Started
 
 ### Build the Mac App
 
-Install [Bun](https://bun.sh), [Rust](https://rustup.rs), Apple's Xcode Command Line Tools, and the [Tauri macOS prerequisites](https://v2.tauri.app/start/prerequisites/). Direct extraction also needs `swift`, `ffmpeg`, and `ffprobe` available to the app process; these tools are not bundled.
+Install [Bun](https://bun.sh), [Rust](https://rustup.rs), Apple's Xcode Command Line Tools, and the [Tauri macOS prerequisites](https://v2.tauri.app/start/prerequisites/). Direct extraction also needs `ffmpeg` and `ffprobe` available to the app process; these are not bundled. Since 0.5.1 the bundled `plaud-bridge` binary handles CoreBluetooth, so `swift` is no longer required at runtime.
 
 ```bash
 xcode-select --install
@@ -155,10 +198,51 @@ For a build without installation, use `bun run tauri:build --bundles app`. To in
 
 The native app starts its own Bun service on port **3487**. Do not run a second backend on that port at the same time.
 
+### Build the Linux App
+
+The desktop vault and its Bluetooth bridge build on Linux. Install [Bun](https://bun.sh), [Rust](https://rustup.rs), the [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/) (`webkit2gtk-4.1`, `javascriptcoregtk-4.1`, `libsoup-3.0`, `gtk+-3.0`, `librsvg`), plus `ffmpeg`, `ffprobe`, `bluez`, and `dbus`.
+
+```bash
+git clone https://github.com/RemiPelloux/OpenPlod.git
+cd OpenPlod
+bun install --frozen-lockfile
+bun install --cwd web --frozen-lockfile
+bun run tauri build --no-bundle
+./src-tauri/target/release/openplod
+```
+
+`bun run build:sidecar` compiles both the Bun service and the cross-platform `plaud-bridge` (Rust + [`btleplug`](https://github.com/deviceplug/btleplug)) into `src-tauri/binaries/`. At runtime the app points the service at the bridge with `OPENPLOD_BLE_BRIDGE`; the same binary is used on macOS and Windows. Bluetooth goes through BlueZ, so the user must be able to reach the system bus (a normal desktop session already can).
+
+### Check Your Setup
+
+Direct transfer needs five separate things to be true. `bun run doctor` checks each one and names the fix for your platform:
+
+```bash
+bun run doctor          # readable report; exits non-zero when something blocks transfer
+bun run doctor --json   # same report as JSON, for bug reports
+bun run device:doctor   # the bridge's own host check, without the vault
+bun run device:scan     # scan for an advertising recorder
+```
+
+```
+OpenPlod host check — linux x64 (7.2.3-arch1-3)
+Bluetooth backend: bluez · bridge: native
+Adapter: hci0 (usb:v1D6Bp0246d0557)
+
+  ok  Desktop platform: linux x64 — Bluetooth via bluez.
+  ok  Bluetooth bridge: plaud-bridge found at src-tauri/plaud-bridge/target/release/plaud-bridge.
+  ok  Bluetooth adapter: Bluetooth adapter is available and powered on.
+  ok  Audio tools: ffmpeg and ffprobe are installed.
+ !!  Recorder authorization: No recorder identity at data/plaud-device.json.
+       → Authorize this recorder with a Plaud sign-in token on the Plaud connection page.
+```
+
+The desktop app shows the same report in the **This computer** panel on the Plaud page, and `GET /api/plaud/environment` returns it as JSON.
+
 ### Get Recordings From Plaud
 
-1. Authorize the Note Pro for this Mac. The current adapter reads a private `plaud-device.json` from the vault directory; see [device authorization](#device-authorization).
-2. Wake the Plaud and keep it near your Mac. Disconnect other clients that may be holding its Bluetooth connection.
+1. Authorize the Note Pro for this computer. The current adapter reads a private `plaud-device.json` from the vault directory; see [device authorization](#device-authorization).
+2. Wake the Plaud and keep it near your computer. Disconnect other clients that may be holding its Bluetooth connection.
 3. Open **Library** or **New Recording**, then **Get from Plaud**.
 4. Select **Connect** to read the actual device list. A failed or unavailable query is an error, not a claim that there are zero recordings.
 5. Select completed recordings and choose **Import**. Progress counts completed recordings, not transferred bytes.
@@ -172,13 +256,15 @@ The extraction command set excludes force-clear, ownership reset, and device-fil
 
 The successful hardware test used the device owner's existing binding credential and signed identity. **Bluetooth discovery alone does not grant recording access.**
 
-The private identity contains the Mac's peripheral identifier, device serial, binding token, signed authorization, and RSA key pair. The default native Mac location is:
+The private identity contains the peripheral identifier, device serial, binding token, signed authorization, and RSA key pair. Its default location is platform-specific:
 
 ```text
-~/Library/Application Support/com.openplod.vault/plaud-device.json
+~/Library/Application Support/com.openplod.vault/plaud-device.json   # macOS
+~/.local/share/com.openplod.vault/plaud-device.json                  # Linux
+%APPDATA%/com.openplod.vault/plaud-device.json                       # Windows
 ```
 
-The file must be owned by the current macOS user with permissions `0600`. For a source-run backend, `OPENPLOD_DEVICE_IDENTITY` can select an absolute path. No identity, account password, embedded vendor secret, or APK is distributed in this repository. Generating a random token or using Android developer credentials does not provision this desktop identity.
+The file must be private to the current user with permissions `0600`. For a source-run backend, `OPENPLOD_DEVICE_IDENTITY` can select an absolute path. The identity is portable: on Linux and Windows the bridge matches the recorder by its advertised Plaud service or name when the stored identifier is a CoreBluetooth UUID that does not appear in the platform's own address space. No identity, account password, embedded vendor secret, or APK is distributed in this repository. Generating a random token or using Android developer credentials does not provision this desktop identity.
 
 **Fresh-install limitation:** obtaining this identity is not yet a supported in-app onboarding flow. Until that is implemented, a new user can use the recording vault and file imports but should not expect plug-and-play Plaud extraction. Do not reset or rebind a device to work around authorization errors.
 

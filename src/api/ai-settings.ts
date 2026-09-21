@@ -27,7 +27,7 @@ export function createAiSettingsApi(database: Database) {
   });
   app.get('/ollama-models', async c => {
     try { return c.json({ success: true, data: await installedOllamaModels() }); }
-    catch { return c.json({ success: false, error: 'Local Ollama is unavailable. Start Ollama on this Mac.' }, 503); }
+    catch { return c.json({ success: false, error: 'Local Ollama is unavailable. Start Ollama on this computer.' }, 503); }
   });
   app.post('/check/:provider', async c => {
     const provider = z.enum([...textProviders, 'deepgram', 'assemblyai']).safeParse(c.req.param('provider'));

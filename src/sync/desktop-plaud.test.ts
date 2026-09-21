@@ -14,11 +14,20 @@ describe('desktop Plaud diagnostics', () => {
   });
   test('coalesces concurrent scans and caches their result', async () => {
     let calls = 0;
-    const probe = coalescedProbe(async () => { calls++; return { detected: false, name: null, connectionVerified: false, detail: 'Not found' }; });
+    const probe = coalescedProbe(async () => { calls++; return { detected: false, name: null, connectionVerified: false, detail: 'Not found',
+      identifier: null, serial: null, protocolVersion: null, rssi: null }; });
     const results = await Promise.all([probe(), probe(), probe()]);
     expect(calls).toBe(1);
     expect(await probe()).toEqual(results[0]);
     expect(calls).toBe(1);
+  });
+  test('reads the recorder serial and address from the advertisement', () => {
+    // Real Plaud Note Pro advertisement captured over BlueZ/btleplug (company id restored by the bridge).
+    const framed = 'XQACcQMEVgAHAQiIELUDJxdTIkQUAAQBAQ==';
+    const probe = parsePlaudProbe(JSON.stringify({ detected: true, name: 'Plaud Note Pro', connectionVerified: true,
+      detail: 'ok', identifier: 'C4:96:9D:11:27:21', serial: null, protocolVersion: null, rssi: null,
+      manufacturerData: [{ companyId: 93, data: framed }] }));
+    expect(probe).toMatchObject({ identifier: 'C4:96:9D:11:27:21', serial: '8810B50327175322', protocolVersion: 20 });
   });
   test('retries failed scans after cache expiration', async () => {
     let calls = 0;

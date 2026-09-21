@@ -3,6 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, Bluetooth, Check, Download, FileAudio, Loader2, RefreshCw, RotateCcw, ShieldCheck, X } from "@/components/icons"
 import { Button } from '@/components/ui/button'
+import { PlaudDeviceAuthorization } from '@/components/PlaudDeviceAuthorization'
 import { api, type DeviceRecording } from '@/lib/api'
 import { getRuntime } from '@/lib/runtime'
 import './plaud-import.css'
@@ -18,6 +19,7 @@ export function PlaudImportDialog({ variant = 'default' }: { variant?: 'default'
   const [sort, setSort] = useState('device')
   const [busy, setBusy] = useState<'loading' | 'importing' | 'restoring' | null>(null)
   const [error, setError] = useState('')
+  const [needsAuthorization, setNeedsAuthorization] = useState(false)
   const [notice, setNotice] = useState('')
   const [progress, setProgress] = useState({ current: 0, total: 0, sessionId: 0 })
   const operation = useRef<AbortController | null>(null)
@@ -27,16 +29,32 @@ export function PlaudImportDialog({ variant = 'default' }: { variant?: 'default'
 
   useEffect(() => () => { operation.current?.abort() }, [])
 
+  // Reading the identity file is local, so it costs nothing to check whether this
+  // recorder still needs authorizing before the user hits a failed connect.
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    api.getPlaudIdentity()
+      .then(next => { if (!cancelled && !next.authorized) setNeedsAuthorization(true) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [open])
+
   const load = async () => {
     if (operation.current) return
     const controller = new AbortController()
     operation.current = controller
-    setBusy('loading'); setError(''); setNotice('')
+    setBusy('loading'); setError(''); setNotice(''); setNeedsAuthorization(false)
     try {
       const result = await api.getDeviceRecordings(controller.signal)
       setRows(result); setSelected([])
     } catch (failure) {
-      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'Could not read the Plaud. Wake it and try again.')
+      if (!controller.signal.aborted) {
+        const message = failure instanceof Error ? failure.message : 'Could not read the Plaud. Wake it and try again.'
+        setError(message)
+        // Surface the authorization flow inline instead of a dead end.
+        setNeedsAuthorization(/authoriz/i.test(message))
+      }
     } finally {
       if (operation.current === controller) { operation.current = null; setBusy(null) }
     }
@@ -101,14 +119,14 @@ export function PlaudImportDialog({ variant = 'default' }: { variant?: 'default'
   return <Dialog.Root open={open} onOpenChange={value => {
     if (!value && busy) return
     setOpen(value)
-    if (value) { setRows(null); setSelected([]); setError(''); setNotice(''); setFilter('all') }
+    if (value) { setRows(null); setSelected([]); setError(''); setNotice(''); setFilter('all'); setNeedsAuthorization(false) }
   }}>
     <Dialog.Trigger asChild><Button variant={variant} className="plaud-import-trigger" onPointerDown={() => { keyboard.current = false }} onKeyDown={() => { keyboard.current = true }}><Bluetooth aria-hidden="true" />Get from Plaud</Button></Dialog.Trigger>
     <Dialog.Portal>
       <Dialog.Overlay className="plaud-import-overlay" />
       <Dialog.Content className="plaud-import-dialog" data-keyboard={keyboard.current} onEscapeKeyDown={event => { if (busy) event.preventDefault() }} onInteractOutside={event => { if (busy) event.preventDefault() }}>
         <header className="plaud-import-heading">
-          <div><Dialog.Title>Get from Plaud</Dialog.Title><Dialog.Description>{mobile ? 'Note Pro / Via your paired Mac' : 'Note Pro / Direct Bluetooth'}</Dialog.Description></div>
+          <div><Dialog.Title>Get from Plaud</Dialog.Title><Dialog.Description>{mobile ? 'Note Pro / Via your paired desktop' : 'Note Pro / Direct Bluetooth'}</Dialog.Description></div>
           <Dialog.Close asChild><Button size="icon" variant="ghost" disabled={!!busy} aria-label="Close Plaud import" title="Close"><X /></Button></Dialog.Close>
         </header>
         <div className="plaud-import-body">
@@ -117,7 +135,8 @@ export function PlaudImportDialog({ variant = 'default' }: { variant?: 'default'
           </div>
           {error && <div className="plaud-import-error" role="alert">{error}</div>}
           {notice && <div className="plaud-import-notice" role="status"><Check />{notice}</div>}
-          {rows === null ? <div className="plaud-import-empty"><FileAudio /><h3>{busy === 'loading' ? 'Reading your recordings' : 'Bring your recordings home'}</h3><p>{mobile ? 'Keep the Plaud near your paired Mac and wake the device.' : 'Wake your Plaud and keep it near this Mac.'}</p><span>Originals stay on the Plaud.</span></div> : <>
+          {needsAuthorization && <PlaudDeviceAuthorization variant="dialog" onAuthorized={() => void load()} />}
+          {rows === null ? (needsAuthorization ? null : <div className="plaud-import-empty"><FileAudio /><h3>{busy === 'loading' ? 'Reading your recordings' : 'Bring your recordings home'}</h3><p>{mobile ? 'Keep the Plaud near your paired desktop and wake the device.' : 'Wake your Plaud and keep it near this computer.'}</p><span>Originals stay on the Plaud.</span></div>) : <>
             <div className="plaud-import-toolbar">
               <div className="plaud-import-tabs" role="group" aria-label="Recording filter">{[['all', 'All'], ['new', 'New'], ['saved', 'Saved']].map(([value, label]) => <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}</div>
               <select aria-label="Sort device recordings" value={sort} onChange={event => setSort(event.target.value)}><option value="device">Device order</option><option value="size">Largest first</option></select>

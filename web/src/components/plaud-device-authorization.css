@@ -1,0 +1,27 @@
+/* Recorder authorization card.  Shared by the Plaud page and the import dialog,
+   so styles live with the component rather than the page. */
+.plaud-authorize { margin-top: 0; }
+.plaud-authorize-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.plaud-authorize-heading > svg:first-child { width: 17px; height: 17px; flex-shrink: 0; color: var(--pine); }
+.plaud-authorize-heading h2 { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; }
+.plaud-authorize-heading .plaud-authorize-done { width: 16px; height: 16px; color: var(--positive); }
+.plaud-authorize p { font-size: 12px; line-height: 1.6; color: var(--muted-foreground); margin-bottom: 8px; }
+.plaud-authorize code { font-family: ui-monospace, monospace; font-size: 11px; overflow-wrap: anywhere; }
+.plaud-authorize-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 18px; margin: 10px 0 14px; }
+.plaud-authorize-facts > div { min-width: 0; }
+.plaud-authorize-facts dt { font-size: 11px; color: var(--muted-foreground); }
+.plaud-authorize-facts dd { margin-top: 2px; font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; }
+.plaud-authorize-field { display: block; margin-bottom: 10px; }
+.plaud-authorize-field > span { display: block; margin-bottom: 5px; font-size: 11px; color: var(--muted-foreground); }
+.plaud-authorize-field input, .plaud-authorize-field select { width: 100%; min-width: 0; padding: 8px 10px; font-size: 12px; color: inherit; background: var(--background); border: 1px solid var(--border); border-radius: 6px; }
+.plaud-authorize-field input:focus-visible, .plaud-authorize-field select:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.plaud-authorize-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.plaud-authorize-notice { color: var(--positive); }
+.plaud-authorize-error { color: var(--destructive); }
+.plaud-authorize-help { margin-top: 12px; font-size: 11px; color: var(--muted-foreground); }
+.plaud-authorize-help summary { cursor: pointer; }
+.plaud-authorize-help p { padding-top: 8px; margin-bottom: 0; }
+.plaud-authorize-help a { color: var(--primary); text-decoration: underline; }
+.plaud-authorize--dialog { padding: 14px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--accent); }
+.plaud-authorize--dialog .plaud-authorize-heading h2 { font-size: 13px; }
+.plaud-authorize--dialog p { font-size: 11px; }

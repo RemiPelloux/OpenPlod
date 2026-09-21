@@ -27,6 +27,8 @@ export function updateTranscript(params: {
 export function saveGeneratedTranscript(params: {
   recordingId: string; fullText: string; segments: unknown;
   wordCount: number; speakerCount: number | null; confidence: number | null;
+  /** AI analysis to store alongside the text, in the shape the reader expects: `{ overview, ... }`. */
+  summary?: unknown;
   fingerprint?: string | null; provenance?: Record<string, unknown>;
   generationId?: string;
 }): boolean {
@@ -44,7 +46,7 @@ export function saveGeneratedTranscript(params: {
     if (current?.origin === 'edited') return false;
     const values = { fullText: params.fullText, segments: params.segments, wordCount: params.wordCount,
       speakerCount: params.speakerCount, confidenceScore: params.confidence, origin: 'generated',
-      currentVersionId: versionId, summary: null, extractedTasks: null, analyzedAt: null, createdAt: new Date().toISOString() };
+      currentVersionId: versionId, summary: params.summary ?? null, extractedTasks: null, analyzedAt: null, createdAt: new Date().toISOString() };
     tx.insert(transcripts).values({ recordingId: params.recordingId, ...values })
       .onConflictDoUpdate({ target: transcripts.recordingId, set: values }).run();
     return true;

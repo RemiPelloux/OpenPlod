@@ -344,6 +344,13 @@ button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid
 .markdown-document table { width: 100%; margin: 1.3em 0; border-collapse: collapse; font-family: inherit; font-size: 14px; }
 .markdown-document th, .markdown-document td { border: 1px solid var(--border); padding: 7px 9px; text-align: left; }
 .markdown-editor { width: 100%; min-height: 520px; resize: vertical; border: 0; background: transparent; color: var(--foreground); font-family: Menlo, Monaco, Consolas, monospace; font-size: 14px; line-height: 1.7; outline: none; }
+/* TS-01: playback following and word highlighting. */
+.segment-follow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12px; color: var(--muted-foreground); }
+.segment-follow label { display: inline-flex; align-items: center; gap: 7px; }
+.segment-word { border-radius: 3px; }
+.segment-word.active { background: color-mix(in srgb, var(--primary) 30%, transparent); }
+@media (prefers-reduced-motion: no-preference) { .segment-word { transition: background 120ms linear; } }
+
 .document-empty { display: flex; min-height: 380px; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .document-empty > svg { width: 34px; height: 34px; margin-bottom: 17px; color: var(--muted-foreground); opacity: 0.55; }
 .document-empty h2 { margin: 0; font-size: 20px; font-weight: 500; }

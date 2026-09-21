@@ -27,6 +27,7 @@ import {
   ListTree,
   Trash2,
   Upload,
+  Wand2,
   X,
 } from "@/components/icons"
 import { Badge } from '@/components/ui/badge'
@@ -35,6 +36,8 @@ import { IconButton } from '@/components/ui/icon-button'
 import { PlaybackSpeedMenu } from '@/components/PlaybackSpeedMenu'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { SaveTranscriptDialog } from '@/components/NoteDialogs'
+import { TranscriptStudio } from '@/components/TranscriptStudio'
+import { activeWordIndex, followedSegmentIndex, hasWordTiming } from '@/lib/transcript-sync'
 import { TranscribeDialog } from '@/components/TranscribeDialog'
 import { RecordingBookmarks } from '@/components/RecordingBookmarks'
 import { SegmentEditor } from '@/components/SegmentEditor'
@@ -44,18 +47,19 @@ import { exportDocument, exportOriginalAudio, recordingMarkdown, safeDocumentNam
 import { deviceCommand, supportsPlaudDevice, vaultArguments } from '@/lib/plaud-device'
 
 type BusyAction = 'transcribing' | 'summarizing' | 'saving' | 'forwarding' | null
-type DocumentMode = 'preview' | 'edit' | 'timestamps'
+type DocumentMode = 'preview' | 'edit' | 'timestamps' | 'studio'
 
-function findActiveSegment(segments: TranscriptSegment[], time: number): TranscriptSegment | undefined {
-  let low = 0
-  let high = segments.length - 1
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2)
-    const segment = segments[middle]
-    if (time < segment.startTime) high = middle - 1
-    else if (time >= segment.endTime) low = middle + 1
-    else return segment
-  }
+/**
+ * One spoken segment, with the active word highlighted when the provider gave
+ * real per-word timings. Without them the whole segment highlights instead;
+ * word positions are never interpolated from a segment's span.
+ */
+function SegmentCopy({ segment, time, wordTiming }: { segment: TranscriptSegment; time: number; wordTiming: boolean }) {
+  if (!wordTiming || !segment.words?.length) return <>{segment.text}</>
+  const active = activeWordIndex(segment.words, time)
+  return <>{segment.words.map((word, index) => (
+    <span key={index} className={index === active ? 'segment-word active' : 'segment-word'}>{word.text}{' '}</span>
+  ))}</>
 }
 
 export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
@@ -78,6 +82,11 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
   const [documentMode, setDocumentMode] = useState<DocumentMode>('preview')
   const [editingMetadata, setEditingMetadata] = useState(false)
   const [activeSegment, setActiveSegment] = useState<string | null>(null)
+  // TS-01: the scroll anchor is held separately from the highlight so a pause
+  // between segments does not send the transcript back to the top.
+  const [followIndex, setFollowIndex] = useState(-1)
+  const [following, setFollowing] = useState(true)
+  const activeRow = useRef<HTMLDivElement>(null)
   const [titleDraft, setTitleDraft] = useState('')
   const [contextDraft, setContextDraft] = useState('')
   const [notesDraft, setNotesDraft] = useState('')
@@ -117,6 +126,9 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
       return raw.filter(s => Number.isFinite(s.start) && Number.isFinite(s.end) && s.end >= s.start).map((s, i) => ({ id: `s${i}`, text: s.text, startTime: s.start, endTime: s.end, speaker: typeof s.speaker === 'string' ? s.speaker : `Speaker ${s.speaker ?? ''}` }))
     } catch { return [] }
   }, [selectedVersion, recording?.segments])
+
+  /** True only when a provider genuinely returned per-word timings. */
+  const wordTiming = useMemo(() => hasWordTiming(displaySegments), [displaySegments])
 
   useEffect(() => {
     if (!recording || !['pending', 'transcribing', 'summarizing'].includes(recording.status)) return
@@ -164,6 +176,16 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
       setPlaying(false)
     }
   }, [])
+
+  // Keep the followed segment in view. `block: nearest` avoids yanking the
+  // page when the row is already visible, and reduced-motion is respected.
+  useEffect(() => {
+    if (!following || followIndex < 0) return
+    activeRow.current?.scrollIntoView({
+      block: 'nearest',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+    })
+  }, [following, followIndex])
 
   const seekTo = useCallback((time: number, autoplay = true) => {
     const audio = audioRef.current
@@ -346,8 +368,13 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
           onTimeUpdate={() => {
             const time = audioRef.current?.currentTime ?? 0
             setCurrentTime(time)
-            const segment = findActiveSegment(displaySegments, time)
-            setActiveSegment(segment?.id ?? null)
+            setFollowIndex(previous => {
+              const next = followedSegmentIndex(displaySegments, time, previous)
+              setActiveSegment(displaySegments[next]?.startTime !== undefined
+                && time >= displaySegments[next]!.startTime && time < displaySegments[next]!.endTime
+                ? displaySegments[next]!.id : null)
+              return next
+            })
           }}
           onLoadedMetadata={() => {
             const audio = audioRef.current
@@ -377,8 +404,8 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
       <div className="recording-workspace">
         <main className="document-pane">
           <div className="document-toolbar">
-            <ToggleGroup type="single" className="document-modes" value={documentMode} onValueChange={value => { if (value === 'preview' || value === 'edit' || value === 'timestamps') { if (value === 'edit') setSelectedVersion(null); setDocumentMode(value) } }} aria-label="Transcript view">
-              <ToggleGroupItem value="preview"><FileText />Markdown</ToggleGroupItem><ToggleGroupItem value="edit"><Pencil />Edit</ToggleGroupItem><ToggleGroupItem value="timestamps"><ListTree />Transcript</ToggleGroupItem>
+            <ToggleGroup type="single" className="document-modes" value={documentMode} onValueChange={value => { if (value === 'preview' || value === 'edit' || value === 'timestamps' || value === 'studio') { if (value === 'edit') setSelectedVersion(null); setDocumentMode(value) } }} aria-label="Transcript view">
+              <ToggleGroupItem value="preview"><FileText />Markdown</ToggleGroupItem><ToggleGroupItem value="edit"><Pencil />Edit</ToggleGroupItem><ToggleGroupItem value="timestamps"><ListTree />Transcript</ToggleGroupItem><ToggleGroupItem value="studio"><Wand2 />Studio</ToggleGroupItem>
             </ToggleGroup>
             {documentMode === 'edit' && (
               <Button size="sm" onClick={() => void saveTranscript()} disabled={action !== null || recording.transcriptText === undefined}><Save />Save version</Button>
@@ -390,24 +417,37 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
           )}
 
           <article className="document-surface">
-            {documentMode === 'edit' ? (
+            {documentMode === 'studio' ? (
+              <TranscriptStudio recording={recording} onChanged={loadRecording} />
+            ) : documentMode === 'edit' ? (
               recording.transcriptText !== undefined ? (
                 <textarea className="markdown-editor" aria-label="Transcript Markdown" value={transcriptDraft} onChange={event => setTranscriptDraft(event.target.value)} spellCheck />
               ) : <TranscriptEmpty action={action} onTranscribe={() => void runAction('transcribing')} />
             ) : documentMode === 'timestamps' ? (
               displaySegments.length ? (
+                <>
+                <div className="segment-follow">
+                  <label>
+                    <input type="checkbox" checked={following} onChange={event => setFollowing(event.target.checked)} />
+                    Follow playback
+                  </label>
+                  <small>{wordTiming ? 'Word timings available' : 'No word timings from this provider; following by segment'}</small>
+                </div>
                 <div className="segment-list">
-                  {displaySegments.map(segment => (
-                    <div key={segment.id} className="flex items-start gap-1">
+                  {displaySegments.map((segment, index) => (
+                    <div key={segment.id} className="flex items-start gap-1" ref={index === followIndex ? activeRow : undefined}>
                     <button type="button" className={`flex-1 min-w-0 ${activeSegment === segment.id ? 'segment-row active' : 'segment-row'}`} onClick={() => seekTo(segment.startTime)}>
                       <span className={`speaker-mark speaker-${(speakerMap.get(segment.speaker) ?? 0) % 6}`} />
                       <span className="segment-time">{formatDuration(segment.startTime)}</span>
-                      <span className="segment-copy"><strong>{segment.speaker}</strong>{segment.text}</span>
+                      <span className="segment-copy"><strong>{segment.speaker}</strong>
+                        <SegmentCopy segment={segment} time={currentTime} wordTiming={wordTiming && activeSegment === segment.id} />
+                      </span>
                     </button>
                     {!selectedVersion && <SegmentEditor recording={recording} segment={segment} onSaved={loadRecording} />}
                     </div>
                   ))}
                 </div>
+                </>
               ) : displayText ? <p className="p-6 text-sm text-muted-foreground">This transcript version has no timestamp data. Its text is available in Markdown.</p> : <TranscriptEmpty action={action} onTranscribe={() => void runAction('transcribing')} />
             ) : displayText ? (
               <div className="markdown-document"><ReactMarkdown remarkPlugins={[remarkGfm]}>{displayText}</ReactMarkdown></div>

@@ -6,6 +6,7 @@ import { OrganizerError, OrganizerStore } from '../organizer/store';
 import { NoteDeliveryService } from '../organizer/delivery';
 import { purgeSchema, revisionSchema } from '../organizer/schemas';
 import { DocumentGenerationService, generateDocumentSchema } from '../organizer/generation';
+import { documentTemplateCatalog } from '../organizer/document-templates';
 
 export function createOrganizerApi(store: OrganizerStore, delivery = new NoteDeliveryService(store), generation = new DocumentGenerationService(store)) {
   const app = new Hono();
@@ -18,6 +19,7 @@ export function createOrganizerApi(store: OrganizerStore, delivery = new NoteDel
     return c.json({ success: false, code: 'storage_error', error: 'The note operation could not be completed. Your last saved version is retained.' }, 500);
   });
   app.get('/', c => c.json({ success: true, data: { schemaVersion: '1', capabilities: ['folders', 'documents', 'transcript-snapshots', 'versions', 'deliveries'], markdownLimitBytes: 524288, trashDays: 30 } }));
+  app.get('/document-templates', c => c.json({ success: true, data: documentTemplateCatalog() }));
   app.get('/folders', c => c.json({ success: true, data: store.folders() }));
   app.get('/transcripts/:id', c => c.json({ success: true, data: store.transcript(c.req.param('id'), c.req.query('versionId')) }));
   app.post('/folders', async c => c.json({ success: true, data: store.createFolder(await c.req.json()) }, 201));

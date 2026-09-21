@@ -1,0 +1,26 @@
+[package]
+name = "plaud-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Cross-platform Bluetooth Low Energy bridge for Plaud Note Pro recorders"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "plaud-bridge"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.22"
+btleplug = "0.11"
+futures = "0.3"
+rsa = "0.9"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync", "io-util", "io-std"] }
+uuid = "1"
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+codegen-units = 1
+strip = true

@@ -1,13 +1,39 @@
+import { bleScanCommand, isBluetoothIdentifier } from './plaud-bridge';
+import { parseNoteProAdvertisement } from './plaud-protocol';
+
 export interface DesktopPlaudProbe {
   detected: boolean;
   name: string | null;
   connectionVerified: boolean;
   detail: string;
+  /** Bluetooth address (or CoreBluetooth UUID) used to reach the recorder. */
+  identifier: string | null;
+  /** Recorder serial number, when the advertisement exposes it. */
+  serial: string | null;
+  protocolVersion: number | null;
+  rssi: number | null;
 }
 
 const unavailable = (detail: string): DesktopPlaudProbe => ({
   detected: false, name: null, connectionVerified: false, detail,
+  identifier: null, serial: null, protocolVersion: null, rssi: null,
 });
+
+/** Older bridges omit `serial`, so decode it from the raw advertisement instead. */
+function serialFromManufacturerData(value: unknown): { serial: string; protocolVersion: number } | null {
+  if (!Array.isArray(value)) return null;
+  for (const entry of value) {
+    const encoded = (entry as { data?: unknown } | null)?.data;
+    if (typeof encoded !== 'string') continue;
+    try {
+      const advertised = parseNoteProAdvertisement(new Uint8Array(Buffer.from(encoded, 'base64')));
+      return { serial: advertised.serial, protocolVersion: advertised.protocolVersion };
+    } catch {
+      // Not a Note Pro advertisement payload; keep looking.
+    }
+  }
+  return null;
+}
 
 export function parsePlaudProbe(output: string): DesktopPlaudProbe {
   try {
@@ -16,8 +42,20 @@ export function parsePlaudProbe(output: string): DesktopPlaudProbe {
       || typeof result.detail !== 'string' || (result.name !== null && typeof result.name !== 'string')) {
       return unavailable('The Bluetooth scanner returned an invalid result.');
     }
-    return { detected: result.detected, name: result.detected ? result.name : null,
-      connectionVerified: result.detected && result.connectionVerified, detail: result.detail };
+    if (!result.detected) return unavailable(result.detail);
+    const advertised = typeof result.serial === 'string' && /^[0-9A-F]{16}$/.test(result.serial)
+      ? { serial: result.serial, protocolVersion: Number.isInteger(result.protocolVersion) ? result.protocolVersion : null }
+      : serialFromManufacturerData(result.manufacturerData);
+    return {
+      detected: true,
+      name: result.name,
+      connectionVerified: Boolean(result.connectionVerified),
+      detail: result.detail,
+      identifier: typeof result.identifier === 'string' && isBluetoothIdentifier(result.identifier) ? result.identifier : null,
+      serial: advertised?.serial ?? null,
+      protocolVersion: advertised?.protocolVersion ?? null,
+      rssi: Number.isInteger(result.rssi) ? result.rssi : null,
+    };
   } catch {
     return unavailable('The Bluetooth scanner returned an unreadable result.');
   }
@@ -38,11 +76,12 @@ export function coalescedProbe(run: () => Promise<DesktopPlaudProbe>, cacheMs = 
 }
 
 export const scanDesktopPlaud = coalescedProbe(async () => {
-  if (process.platform !== 'darwin') return unavailable('Bluetooth detection is currently available on macOS.');
-  const script = process.env.OPENPLOD_SCAN_SCRIPT || 'scripts/scan-plaud.swift';
-  const child = Bun.spawn(['swift', script], { stdout: 'pipe', stderr: 'ignore' });
+  let command: string[];
+  try { command = bleScanCommand(); }
+  catch (error) { return unavailable(error instanceof Error ? error.message : 'Bluetooth detection is unavailable on this platform.'); }
+  const child = Bun.spawn(command, { stdout: 'pipe', stderr: 'ignore' });
   let timedOut = false;
-  const timeout = setTimeout(() => { timedOut = true; child.kill(); }, 35_000);
+  const timeout = setTimeout(() => { timedOut = true; child.kill(); }, 45_000);
   try {
     const [output] = await Promise.all([new Response(child.stdout).text(), child.exited]);
     return timedOut ? unavailable('Bluetooth scan timed out. Check Bluetooth permissions and retry.') : parsePlaudProbe(output);

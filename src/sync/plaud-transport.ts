@@ -1,5 +1,6 @@
 import { createInterface } from 'node:readline';
 import { Readable } from 'node:stream';
+import { defaultBridgeSpec, isBluetoothIdentifier } from './plaud-bridge';
 
 export type PlaudEvent = { event: string; id?: number; ok?: boolean; data?: string; uuid?: string;
   reason?: string; maxWrite?: number };
@@ -19,10 +20,13 @@ export class PlaudTransport {
   private closing: Promise<void> | null = null;
   readonly metadata: Record<string, string> = {};
 
-  constructor(identifier: string, script = process.env.OPENPLOD_BLE_SCRIPT || 'scripts/plaud-bridge.swift',
+  constructor(identifier: string, bridge = defaultBridgeSpec(),
     launch: (command: string[]) => PlaudBridgeProcess = command => Bun.spawn(command, { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' })) {
-    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(identifier)) throw new Error('Invalid Bluetooth device identifier');
-    this.child = launch(['swift', script, identifier]);
+    if (!isBluetoothIdentifier(identifier)) throw new Error('Invalid Bluetooth device identifier');
+    // A `.swift` bridge runs under the Swift interpreter; the native bridge takes a
+    // `connect` sub-command.
+    const command = bridge.endsWith('.swift') ? ['swift', bridge, identifier] : [bridge, 'connect', identifier];
+    this.child = launch(command);
     const lines = createInterface({ input: Readable.fromWeb(this.child.stdout as never) });
     lines.on('line', line => {
       try { this.receive(JSON.parse(line)); } catch { this.fail(new Error('Invalid Bluetooth bridge response')); }

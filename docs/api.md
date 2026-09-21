@@ -141,4 +141,28 @@ Delivery state is `pending`, `sent` (HTTP 2xx accepted), or `unknown`. A timeout
 
 ## Existing Audio APIs
 
+### Subtitle export
+
+`GET /api/recordings/:id/transcript/subtitles`
+
+Without `format`, returns whether the saved transcript can become subtitles:
+
+```json
+{ "success": true, "data": { "exportable": false, "reason": "no-timing",
+  "detail": "The transcription provider returned no timings for this recording. Subtitles need real start and end times.",
+  "cueCount": 0, "formats": [] } }
+```
+
+`reason` is one of `no-segments`, `no-timing`, `invalid-timing`, `empty-text`, or `null` when exportable.
+
+| Query | Meaning |
+| --- | --- |
+| `format=srt\|vtt` | Download the subtitle file instead of the readiness report |
+| `versionId=<id>` | Export a stored transcript version rather than the current one |
+| `speakerLabels=1` | Prefix each cue with `Speaker N:` when the transcript has diarization |
+
+Returns `409` with the refusal reason when a format is requested for a transcript without usable
+timings; timings are never invented or interpolated. `400` for an unsupported format, `404` when no
+saved transcript exists.
+
 The existing `/api/recordings`, `/api/transcripts`, `/api/plaud`, and `/api/mobile` routes are unchanged apart from accepting the optional API token through the shared authentication gate. Plaud extraction and recording ownership are not routed through the organizer. See [README.md](../README.md) for hardware and privacy limitations.

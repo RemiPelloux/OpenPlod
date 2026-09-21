@@ -58,10 +58,10 @@ export function PhoneAuthorization({ onDone }: { onDone: () => void }) {
   }
   return <section className="device-section" aria-label="Authorize phone">
     <div className="device-section-heading"><h2><KeyRound className="inline size-4 mr-2" />Add your Note Pro</h2></div>
-    <p className="device-muted">{request ? 'On your Mac, open Plaud device and approve this verification code.' : 'Authorize this phone once from your paired Mac. Audio will download directly over this phone\'s Bluetooth.'}</p>
+    <p className="device-muted">{request ? 'On your desktop, open Plaud device and approve this verification code.' : 'Authorize this phone once from your paired desktop. Audio will download directly over this phone\'s Bluetooth.'}</p>
     {request && <p className="text-2xl font-mono py-4" aria-label="Verification code">{request.code}</p>}
     {error && <p role="alert" className="device-error">{error}</p>}
-    <Button disabled={busy} onClick={() => void run()}>{busy ? <Loader2 className="animate-spin" /> : <ShieldCheck />}{request && request.expiresAt > Date.now() ? 'I approved on my Mac' : 'Request authorization'}</Button>
+    <Button disabled={busy} onClick={() => void run()}>{busy ? <Loader2 className="animate-spin" /> : <ShieldCheck />}{request && request.expiresAt > Date.now() ? 'I approved on my desktop' : 'Request authorization'}</Button>
   </section>
 }
 

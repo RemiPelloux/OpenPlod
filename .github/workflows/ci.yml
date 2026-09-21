@@ -23,3 +23,38 @@ jobs:
       - run: bun run typecheck
       - run: bun run --cwd web lint
       - run: bun run build
+
+  bridge:
+    # The Bluetooth bridge is the one component that must compile per platform,
+    # so it is built on each of them rather than only on the release machine.
+    name: Bluetooth bridge (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install BlueZ/D-Bus headers
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/plaud-bridge
+      - name: Build
+        run: cargo build --release --manifest-path src-tauri/plaud-bridge/Cargo.toml
+      - name: Lint
+        run: cargo clippy --release --manifest-path src-tauri/plaud-bridge/Cargo.toml -- -D warnings
+      - name: Host check runs and reports a backend
+        # CI runners have no Bluetooth adapter; `doctor` must still exit 0 and
+        # name the backend rather than crash. That is the contract the vault
+        # relies on to render a diagnosis instead of an error.
+        shell: bash
+        run: |
+          report=$(cargo run --quiet --release --manifest-path src-tauri/plaud-bridge/Cargo.toml -- doctor)
+          echo "$report"
+          echo "$report" | grep -q '"backend"'

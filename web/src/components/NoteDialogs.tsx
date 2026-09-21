@@ -5,10 +5,21 @@ import { Copy, Download, Loader2, NotebookPen, Send, FilePlus2, Wand2, RotateCcw
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
-import { folderPaths, generateDocument, notesApi, type DocumentGeneration, type NoteDocument, type NoteFolder, type NoteDestination, type NoteDelivery } from '@/lib/notes-api'
+import { folderPaths, generateDocument, notesApi, type DocumentGeneration, type DocumentStyle, type NoteDocument, type NoteFolder, type NoteDestination, type NoteDelivery } from '@/lib/notes-api'
 import { exportDocument, safeDocumentName } from '@/lib/document-export'
 import './notes-dialog.css'
 import { aiSettingsApi } from '@/lib/ai-settings'
+
+/** Labels for the TS-07 templates, in the backend's order. */
+const DOCUMENT_STYLE_LABELS: [DocumentStyle, string][] = [
+  ['notes', 'Structured notes'],
+  ['meeting', 'Meeting minutes'],
+  ['interview', 'Interview notes'],
+  ['lecture', 'Lecture notes'],
+  ['brief', 'Project brief'],
+  ['prd', 'Product requirements'],
+  ['email', 'Follow-up email'],
+]
 
 export function NoteDialog({ title, description, children, onClose, busy = false }: {title: string; description: string; children: ReactNode; onClose: () => void; busy?: boolean}) {
   const returnFocus = useRef(window.document.activeElement as HTMLElement | null)
@@ -42,7 +53,7 @@ function SaveTranscriptForm({ recordingId, versionId, title, onClose }: {recordi
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [style, setStyle] = useState<'notes' | 'meeting' | 'brief'>('notes')
+  const [style, setStyle] = useState<DocumentStyle>('notes')
   const [instructions, setInstructions] = useState('')
   const [generation, setGeneration] = useState<DocumentGeneration | null>(null)
   const [provider, setProvider] = useState('')
@@ -73,7 +84,7 @@ function SaveTranscriptForm({ recordingId, versionId, title, onClose }: {recordi
       finally { setBusy(false) }
     }}><label>Title<input value={name} onChange={event => setName(event.target.value)} maxLength={180} required disabled={busy || !!generation} /></label>
       {!generation && <>
-        <label>Document style<select value={style} onChange={event => setStyle(event.target.value as typeof style)} disabled={busy}><option value="notes">Structured notes</option><option value="meeting">Meeting minutes</option><option value="brief">Project brief</option></select></label>
+        <label>Document style<select value={style} onChange={event => setStyle(event.target.value as DocumentStyle)} disabled={busy}>{DOCUMENT_STYLE_LABELS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>Focus (optional)<textarea value={instructions} onChange={event => setInstructions(event.target.value)} maxLength={2000} rows={3} disabled={busy} /></label>
         <p className="note-ai-disclosure">{provider === 'ollama' ? 'The transcript will be processed by local Ollama.' : provider ? `The transcript will be sent to ${provider}.` : 'Loading provider...'} Original audio and transcript stay unchanged.</p>
       </>}

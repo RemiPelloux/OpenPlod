@@ -101,12 +101,16 @@ export class DeepgramEngine implements TranscriptionEngine {
     } else if (words.length > 0) {
       let current: TranscriptSegment | null = null;
       for (const word of words) {
+        // Deepgram reports real per-word timings; keeping them is what lets
+        // the player highlight words instead of guessing from the segment.
+        const timing = { start: word.start || 0, end: word.end || 0, text: word.punctuated_word || word.word || '' };
         if (!current || current.speaker !== word.speaker) {
           if (current) segments.push(current);
-          current = { start: word.start || 0, end: word.end || 0, text: word.punctuated_word || word.word || '', speaker: word.speaker, confidence: word.confidence || 0 };
+          current = { start: timing.start, end: timing.end, text: timing.text, speaker: word.speaker, confidence: word.confidence || 0, words: [timing] };
         } else {
           current.end = word.end || current.end;
-          current.text += ' ' + (word.punctuated_word || word.word || '');
+          current.text += ' ' + timing.text;
+          current.words = [...(current.words ?? []), timing];
         }
       }
       if (current) segments.push(current);

@@ -14,7 +14,7 @@ export class RecordingImportConflict extends Error {}
 export type RecordingProvenance = {
   sourceProvider: 'plaud' | 'opennotes' | 'upload';
   sourceRecordingId?: string | null;
-  sourceTransport: 'export' | 'folder' | 'mobile' | 'upload' | 'ble';
+  sourceTransport: 'export' | 'folder' | 'mobile' | 'upload' | 'ble' | 'cloud';
   recordedAt?: string | null;
 };
 
@@ -38,6 +38,16 @@ export async function fingerprintFile(filePath: string): Promise<string> {
 
 export function isSupportedAudio(filePath: string): boolean {
   return AUDIO_EXTENSIONS.has(extname(filePath).toLowerCase());
+}
+
+/** Staging directory used while an incoming file is imported into the vault. */
+export function incomingDirectory(): string {
+  return resolve(dirname(resolve(process.env.OPENPLOD_LIBRARY_PATH || './data/recordings')), 'incoming');
+}
+
+/** Replaces characters that are not safe in a filename. */
+export function safeFilename(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 160) || 'recording.m4a';
 }
 
 export async function importRecordingFile(params: {

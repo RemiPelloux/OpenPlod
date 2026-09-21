@@ -286,7 +286,7 @@ console.log(`[PlaudApp] Starting on http://${hostname}:${port}`);
 export default {
   port,
   hostname,
-  // CoreBluetooth discovery can take up to 35 seconds before returning a result.
+  // Bluetooth discovery can take up to 35 seconds before returning a result.
   idleTimeout: 60,
   fetch: app.fetch,
 };

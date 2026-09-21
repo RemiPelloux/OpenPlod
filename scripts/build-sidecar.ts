@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync } from 'node:fs'
 import { arch, platform } from 'node:os'
 import { resolve } from 'node:path'
 
@@ -37,3 +37,27 @@ const build = Bun.spawnSync([
 if (build.exitCode !== 0) process.exit(build.exitCode)
 if (!suffix) chmodSync(outputPath, 0o755)
 console.log(`[Tauri] Sidecar ready: ${outputPath}`)
+
+// Cross-platform Bluetooth bridge (Rust + btleplug). This is the native helper the
+// desktop vault spawns to talk to a Plaud recorder over BLE on Linux/Windows (and
+// optionally macOS). Build it for the requested triple.
+const bridgeManifest = resolve('src-tauri/plaud-bridge/Cargo.toml')
+const hostTriple = hostTriples[platform()]?.[arch()]
+const crossArgs = triple !== hostTriple ? ['--target', triple] : []
+const bridgeBuild = Bun.spawnSync([
+  'cargo', 'build', '--release', ...crossArgs, '--manifest-path', bridgeManifest,
+], { stdout: 'inherit', stderr: 'inherit' })
+if (bridgeBuild.exitCode !== 0) process.exit(bridgeBuild.exitCode)
+
+const bridgeName = suffix ? 'plaud-bridge.exe' : 'plaud-bridge'
+const bridgeRelease = resolve(
+  'src-tauri/plaud-bridge/target',
+  ...(crossArgs.length ? [triple] : []),
+  'release',
+  bridgeName,
+)
+if (!existsSync(bridgeRelease)) throw new Error(`Bluetooth bridge was not produced: ${bridgeRelease}`)
+const bridgeOutput = resolve(outputDirectory, `plaud-bridge-${triple}${suffix}`)
+copyFileSync(bridgeRelease, bridgeOutput)
+if (!suffix) chmodSync(bridgeOutput, 0o755)
+console.log(`[Tauri] Bluetooth bridge ready: ${bridgeOutput}`)

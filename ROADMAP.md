@@ -88,8 +88,8 @@ Use a separate analysis adapter contract. A provider supporting text analysis is
 ## 0.6.0 - Transcript Studio
 
 - [ ] **TS-01:** Add synchronized audio/text following, word highlighting when genuine word timing exists, and timestamp navigation. Missing timing stays missing.
-- [ ] **TS-02:** Expand the existing correction editor with speaker rename/merge, segment split/merge, find/replace, and undo/redo while preserving source timing and revision checks.
-- [ ] **TS-03:** Add side-by-side version comparison and explicit promotion of a generated version. Show manual corrections separately from model changes.
+- [x] **TS-02:** Expand the existing correction editor with speaker rename/merge, segment split/merge, find/replace, and undo/redo while preserving source timing and revision checks.
+- [x] **TS-03:** Add side-by-side version comparison and explicit promotion of a generated version. Show manual corrections separately from model changes.
 - [ ] **TS-04:** Add reviewed AI cleanup: punctuation, paragraphs, optional filler removal, and Markdown headings. Show a diff before saving; retain the verbatim transcript.
 - [ ] **TS-05:** Add translation with a target-language selector, linked original/translated views, and separate version history.
 - [ ] **TS-06:** Generate timestamp-linked chapters, decisions, action items, and open questions. Keep unknown owners/dates unset rather than inventing them.
@@ -98,6 +98,13 @@ Use a separate analysis adapter contract. A provider supporting text analysis is
 - [ ] **TS-09:** Add SRT/VTT exports when valid timestamps exist, plus structured chapter/action-item exports and readable PDF output. Keep existing Markdown/text/JSON exports compatible.
 - [ ] **TS-10:** Add batch transcription and batch document generation with per-item status, cancellation, cost confirmation, and retry-failed-only behavior.
 - [ ] **TS-11:** **Stretch:** compare two transcription providers on the same recording with an explicit second-upload/cost confirmation and independent versions.
+
+> **0.6.0 status (September 21, 2026).** Every TS item is implemented and covered by automated
+> tests, and the Transcript Studio ships in 0.6.0. Only TS-02 and TS-03 are checked: they are the
+> items with no live-provider dependency, so their acceptance is fully demonstrable here. TS-01,
+> TS-04..TS-10 remain unchecked pending live-provider and real-audio evidence — see the
+> [0.6.0 changelog](CHANGELOG.md#060---2026-09-21) for exactly what was and was not verified.
+> The exit gate below has not been run.
 
 **Exit gate:** original text survives every cleanup/translation operation; stale saves return conflicts; timestamp edits remain valid; exports match the selected saved version. Real-audio acceptance covers multiple speakers, French and English, silence, background noise, and a long recording. Report quality results and limitations, not a universal accuracy claim.
 

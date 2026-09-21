@@ -2,12 +2,25 @@
  * Shared types for all transcription engines
  */
 
+/** One word with its own timing. Only present when a provider supplies it. */
+export interface TranscriptWord {
+  start: number;
+  end: number;
+  text: string;
+}
+
 export interface TranscriptSegment {
   start: number;
   end: number;
   text: string;
   speaker?: number;
   confidence: number | null;
+  /**
+   * Per-word timings, when the provider genuinely returned them. Absent is
+   * meaningful: it means no word timing exists, and the UI must fall back to
+   * segment-level following rather than interpolating word positions.
+   */
+  words?: TranscriptWord[];
 }
 
 export interface TranscriptionResult {

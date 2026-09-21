@@ -1,5 +1,127 @@
 # Changelog
 
+## 0.6.0 - 2026-09-21
+
+Transcript Studio. Editing, version comparison, reviewed AI operations, structured exports, reusable
+actions and batch transcription, reachable from a new Studio mode on the recording page.
+
+### Added
+
+- **TS-01** playback following. The transcript scrolls with the audio and holds its anchor through a
+  pause instead of jumping to the top. Word-level highlighting renders only when a provider genuinely
+  returned per-word timings; Deepgram's word timings are now persisted rather than discarded, and a
+  transcript without them says so and follows by segment.
+- **TS-02** editing operations: speaker rename/merge, segment split/merge, and literal find/replace
+  with match-case, whole-word and per-speaker scoping. A preview shows the result before anything is
+  written. Undo restores the previous version, so it survives a reload and leaves the undone version
+  in history.
+- **TS-03** version comparison and promotion. A word-level diff labels each change as
+  `manual-correction`, `regeneration`, `manual-revision` or `reverted-to-generated`. Promotion is the
+  only way a stored version becomes current, and the replaced version stays in history.
+- **TS-04** reviewed AI cleanup: punctuation, paragraphs, optional filler removal and headings, shown
+  as a diff and saved only on an explicit accept.
+- **TS-05** translation, stored as its own version lineage and never promoted over the original.
+- **TS-06** extraction of chapters, decisions, action items and open questions.
+- **TS-07** document templates, three to seven: structured notes, meeting minutes, interview notes,
+  lecture notes, project brief, product requirements and follow-up email.
+- **TS-08** reusable custom AI actions: a saved instruction re-runnable against any transcript,
+  previewed and never written automatically.
+- **TS-09** subtitle export (SRT/VTT) and structured exports (Markdown, chapters, CSV, JSON,
+  print-ready HTML).
+- **TS-10** batch transcription with per-item status, cancellation, confirmation before running, and
+  retry-failed-only.
+- `bun run check:studio`, a read-only Playwright acceptance for the studio.
+
+### What this release refuses to do
+
+These are the design decisions behind most of the code above, and they are the reason several
+outputs are smaller than a model would happily produce:
+
+- **Models never emit timestamps.** For TS-06 the model is shown numbered segments and must cite an
+  index; every time is then read from our own segments. An index it invents resolves to no link
+  rather than a plausible-looking time.
+- **Unknown stays unknown.** An unstated owner or due date stays null — including when a model writes
+  "unknown" or "TBD" — renders as an em dash, and exports to CSV as an empty field. A spoken
+  "next Friday" is kept verbatim, never resolved to a date.
+- **Timing is never invented.** Splitting a segment interpolates a boundary only inside that
+  segment's own real span, and an untimed segment stays untimed. Subtitles are refused, with the
+  reason, for a transcript whose provider returned no timing — including the common all-zero
+  placeholder. Word highlighting is never interpolated from a segment span.
+- **Nothing is saved on a first click.** Cleanup, translation and custom actions return proposals.
+  Both save paths require the source hash that was reviewed and return 409 if the transcript moved.
+  Cleanup is rejected outright if it drops more than half the transcript's content words.
+- **Batches confirm before spending** and report scope and provider rather than a currency figure,
+  because providers price per second of audio or per token and OpenPlod does not know either before
+  the call. Retrying re-submits only failed items, never a succeeded one.
+- **Transcripts are data, not instructions**, in every prompt added here.
+
+### Changed
+
+- The recording page gains a fourth mode, Studio, beside Markdown, Edit and Transcript.
+- `TranscriptSegment` may now carry `words`. Absent remains meaningful: it means no word timing
+  exists, not that it is zero.
+
+### Validation
+
+360 automated tests pass (1,614 assertions); 6 pre-existing failures remain, unrelated to this work
+and reproducing at 0.5.0 (`UNIQUE constraint failed: transcripts.recording_id`, only when the full
+suite shares one database). Backend type checking, frontend lint and frontend build pass.
+
+`bun run check:studio` passes against a real vault: five tabs render, find/replace Apply stays
+disabled until a preview reports matches, the custom-action form stays disabled until complete, four
+real versions list, the subtitle refusal renders its reason, batch requires confirmation before
+running, no horizontal overflow at 1440/1180/900/390/320px, production CSP applied, zero page errors,
+and no request that would mutate a vault or call a provider.
+
+### Not claimed
+
+**The 0.6.0 exit gate has not been run.** It requires real-audio acceptance across multiple speakers,
+French and English, silence, background noise and a long recording. That needs audio and provider
+credentials this build was not tested with, so no roadmap item that depends on a live provider is
+marked complete.
+
+Specifically: no AI path — cleanup, translation, extraction, custom actions, document templates — has
+been exercised against a real provider; every one is covered by stubbed contract tests only. Word
+highlighting is unit-tested against fixtures but was never rendered against a transcript that
+actually carries word timings, because none exists in the test vault. Extracted structure is
+returned and exportable but not persisted. TS-09's PDF path is browser print rather than a generated
+file; no PDF engine was added. Plaud device compatibility is unchanged from 0.5.1.
+
+## 0.5.1 - 2026-09-21
+
+Cross-platform Bluetooth patch: one bridge for every desktop, plus host autodetection. This is a
+platform patch on 0.5.0, not a roadmap milestone; 0.6.0 remains Transcript Studio.
+
+### Added
+
+- `plaud-bridge doctor`, a non-scanning host check reporting the Bluetooth backend, adapter name, and power state. It exits 0 even with no adapter so callers render a diagnosis instead of an error.
+- Host autodetection (`src/sync/plaud-environment.ts`) that checks the platform, bridge, adapter power, `ffmpeg`/`ffprobe`, and recorder authorization independently, each with a platform-specific remediation.
+- `GET /api/plaud/environment` returning that report, with `?refresh=1` to bypass the 15-second coalescing cache. `GET /api/plaud/status` now also carries `platform`, `bluetoothBackend`, `bluetoothReady`, and `environmentBlockers`.
+- A **This computer** panel on the Plaud page showing every check and its fix.
+- `bun run doctor` (with `--json`), `bun run device:doctor`, and `bun run build:bridge`.
+- A CI job that builds and clippy-lints the bridge on Linux, macOS, and Windows, and asserts `doctor` reports a backend on a runner with no adapter.
+- `.deb` and `.rpm` dependency declarations for BlueZ, D-Bus, and ffmpeg.
+
+### Changed
+
+- The Rust `plaud-bridge` is now the default Bluetooth helper on **every** desktop platform, including macOS. One code path is exercised everywhere instead of Swift on macOS and Rust elsewhere.
+- The macOS Swift helpers are now an opt-in fallback only, selected with `OPENPLOD_BLE_BACKEND=swift`. They are never chosen automatically, and Linux and Windows can never be steered onto a backend they cannot run.
+- The Tauri host sets `OPENPLOD_BLE_BRIDGE` on all desktop platforms; the Swift resource paths are exported on macOS only.
+- Status no longer scans the air when the host itself cannot do Bluetooth; it reports the blocking condition instead.
+
+### Fixed
+
+- The scan probe gave connect-and-discover a 10-second budget while the transfer path allowed 35. With a cold BlueZ cache the first scan after boot reported a healthy, connectable recorder as "Bluetooth connection failed". The probe now gets the same budget; reproduced against real hardware and re-verified.
+- Removed an unused `useCallback` import that failed `web` lint.
+
+### Validation
+
+Ran on Arch Linux (kernel 7.2.3) against an authorized Plaud Note Pro, serial `8810B50327175322`, protocol 20: `plaud-bridge scan` reported `connectionVerified: true`, and `plaud-bridge connect` reached `ready` with the `0x1910` command service and both characteristics discovered. `GET /api/plaud/environment` and `GET /api/plaud/status` were verified against a running service.
+
+Automated: 18 new tests for backend selection, the host check parser, audio-tool detection, and the environment report; `cargo clippy -D warnings` clean; backend type checking, frontend lint, and frontend build pass.
+
+**Not claimed:** no end-to-end Linux audio download — that needs a provisioned recorder identity, which the test machine does not have. No macOS or Windows runtime acceptance of the new default backend; both compile and are covered by CI, but neither was run against hardware in this cycle. Plaud device compatibility is unchanged. Six pre-existing test failures (`UNIQUE constraint failed: transcripts.recording_id`, only when the full suite shares one database) remain open and are unrelated to this release; they reproduce at 0.5.0. No roadmap item is marked complete by this patch and no 1.0 release gate is claimed.
+
 ## 0.5.0 - 2026-09-08
 
 Experimental multi-provider prerelease; not a completed roadmap milestone.

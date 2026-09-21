@@ -31,12 +31,155 @@ export interface Recording {
   forwardingError?: string | null
 }
 
+export interface TranscriptWord {
+  start: number
+  end: number
+  text: string
+}
+
 export interface TranscriptSegment {
   id: string
   speaker: string
   text: string
   startTime: number
   endTime: number
+  /** Real per-word timings, or null when the provider supplied none. */
+  words?: TranscriptWord[] | null
+}
+
+// ---------------------------------------------------------------------------
+// Transcript Studio (roadmap TS-02..TS-06, TS-09)
+// ---------------------------------------------------------------------------
+
+/** One editing operation the transcript editor can apply. */
+export type TranscriptOperation =
+  | { op: 'rename-speaker'; from: number | string; to: number | string }
+  | { op: 'merge-speakers'; sources: (number | string)[]; target: number | string }
+  | { op: 'split-segment'; index: number; offset: number }
+  | { op: 'merge-segments'; start: number; count: number }
+  | { op: 'replace'; search: string; replacement: string; matchCase?: boolean; wholeWord?: boolean; speaker?: number | string | null }
+
+export interface StudioSegment {
+  start: number
+  end: number
+  text: string
+  speaker?: number | string | null
+  confidence?: number | null
+}
+
+export interface OperationResult {
+  preview: boolean
+  fullText: string
+  segments: StudioSegment[]
+  summaries: string[]
+  speakers: (number | string)[]
+}
+
+export interface DiffPart { op: 'equal' | 'insert' | 'delete'; text: string }
+export interface TranscriptDiff {
+  parts: DiffPart[]
+  stats: { inserted: number; deleted: number; unchanged: number; identical: boolean }
+  granularity: 'word' | 'line' | 'block'
+}
+
+export interface VersionComparison {
+  before: { versionId: string; origin: string; createdAt: string; provenance: Record<string, unknown> | null }
+  after: { versionId: string; origin: string; createdAt: string; provenance: Record<string, unknown> | null }
+  diff: TranscriptDiff
+  changeKind: 'manual-correction' | 'regeneration' | 'manual-revision' | 'reverted-to-generated'
+}
+
+export interface CleanupProposal {
+  text: string
+  diff: TranscriptDiff
+  provider: string
+  model: string
+  usage: Record<string, number> | null
+  sourceHash: string
+}
+
+export interface TranslationProposal {
+  text: string
+  targetLanguage: string
+  provider: string
+  model: string
+  sourceHash: string
+}
+
+export interface TimedItem { text: string; startSeconds: number | null; segmentIndex: number | null }
+export interface StructureChapter extends TimedItem { title: string }
+export interface StructureAction extends TimedItem { owner: string | null; due: string | null }
+
+export interface TranscriptStructure {
+  chapters: StructureChapter[]
+  decisions: TimedItem[]
+  actionItems: StructureAction[]
+  openQuestions: TimedItem[]
+  provider: string
+  model: string
+  timestampsAvailable: boolean
+}
+
+/** Whether a transcript can honestly be exported as subtitles. */
+export interface SubtitleReadiness {
+  exportable: boolean
+  reason: 'no-segments' | 'no-timing' | 'invalid-timing' | 'empty-text' | null
+  detail: string
+  cueCount: number
+  formats: string[]
+}
+
+export interface TranscriptVersionRow {
+  id: string
+  recordingId: string
+  fullText: string
+  origin: string
+  provenance: Record<string, unknown> | null
+  createdAt: string
+}
+
+/** A saved, reusable AI instruction (roadmap TS-08). */
+export interface CustomAction {
+  id: string
+  name: string
+  instruction: string
+  description: string
+  createdAt: string
+}
+
+export interface CustomActionResult {
+  actionId: string
+  actionName: string
+  text: string
+  provider: string
+  model: string
+  sourceHash: string
+}
+
+/** Batch transcription (roadmap TS-10). */
+export interface BatchItem {
+  recordingId: string
+  state: 'pending' | 'running' | 'complete' | 'failed' | 'cancelled'
+  error?: string
+}
+
+export interface BatchJob {
+  id: string
+  kind: 'transcribe' | 'document'
+  items: BatchItem[]
+  createdAt: string
+  cancelledAt: string | null
+  active: boolean
+  summary: { total: number; pending: number; running: number; complete: number; failed: number; cancelled: number }
+}
+
+export interface BatchEstimate {
+  recordings: number
+  wouldRun: number
+  usesCloudProvider: boolean
+  provider: string | null
+  /** Always null: providers price per second or per token, so a figure here would be invented. */
+  estimatedCost: null
 }
 
 export interface SearchResult {
@@ -114,6 +257,92 @@ export interface PlaudStatus {
   recordingListState: 'unavailable'
   deviceRecordingCount: number | null
   syncPath: string | null
+  deviceIdentifier: string | null
+  deviceSerial: string | null
+  protocolVersion: number | null
+  /** Host operating system the vault service runs on. */
+  platform: string
+  /** Bluetooth stack in use: `corebluetooth`, `bluez` or `winrt`. */
+  bluetoothBackend: string | null
+  /** True when every host precondition for direct transfer is satisfied. */
+  bluetoothReady: boolean
+  environmentBlockers: { id: string; label: string; detail: string; remediation: string | null }[]
+}
+
+/** One autodetected host precondition for direct Bluetooth transfer. */
+export interface EnvironmentCheck {
+  id: 'platform' | 'bridge' | 'adapter' | 'audio-tools' | 'identity'
+  label: string
+  ok: boolean
+  detail: string
+  remediation: string | null
+  actionable: boolean
+}
+
+/** What this computer can do, autodetected rather than assumed. */
+export interface PlaudEnvironment {
+  platform: string
+  arch: string
+  osRelease: string
+  backend: string | null
+  bridgeBackend: 'native' | 'swift'
+  bridgePath: string | null
+  adapter: string | null
+  checks: EnvironmentCheck[]
+  ready: boolean
+  blockers: EnvironmentCheck[]
+  checkedAt: string
+}
+
+/** State of the recorder's local authorization (`plaud-device.json`). */
+export interface PlaudIdentityStatus {
+  authorized: boolean
+  serial: string | null
+  identifier: string | null
+  deviceType: string | null
+  developerCredentialsAvailable: boolean
+  domains: string[]
+  identityPath: string
+}
+
+/** One recording listed from the Plaud cloud account. */
+export interface PlaudCloudRecordingSummary {
+  id: string
+  filename: string
+  recordedAt: string
+  durationMs: number
+  sizeBytes: number
+  serial: string | null
+  isTrash: boolean
+  hasTranscript: boolean
+  hasSummary: boolean
+  imported: boolean
+  recordingId: string | null
+}
+
+/** Account + recording list from the cloud, without touching Bluetooth. */
+export interface PlaudCloudStatus {
+  linked: boolean
+  account: { userId: string; workspaceId: string; region: string; expiresAt: number | null } | null
+  domain: string | null
+  recordings: PlaudCloudRecordingSummary[]
+  totals: { count: number; bytes: number; trashCount: number; importedCount: number }
+}
+
+export interface PlaudCloudImportJob {
+  id: string
+  state: 'running' | 'complete' | 'failed' | 'cancelled'
+  total: number
+  completed: number
+  totalBytes: number
+  receivedBytes: number
+  current: string | null
+  imported: { sourceId: string; recordingId: string; title: string; added: boolean }[]
+  failures: { sourceId: string; title: string; error: string }[]
+  transcripts: number
+  summaries: number
+  transcriptFailures: { sourceId: string; title: string; error: string }[]
+  error?: string
 }
 
 export interface AvailableRecording {
@@ -150,6 +379,8 @@ interface RawTranscriptSegment {
   text?: string
   start?: number
   end?: number
+  /** Unvalidated per-word timings from the provider; checked before use. */
+  words?: unknown
 }
 
 interface RawTranscript {
@@ -221,6 +452,18 @@ function mapRecording(r: RawRecording): Recording {
         text: s.text || '',
         startTime: s.start || 0,
         endTime: s.end || 0,
+        // Only real per-word timings survive; anything malformed is dropped so
+        // the player falls back to segment following rather than guessing.
+        words: Array.isArray(s.words)
+          ? (s.words as unknown[])
+            .filter((w): w is { start: number; end: number; text: string } => {
+              const word = w as { start?: unknown; end?: unknown; text?: unknown } | null
+              return typeof word?.start === 'number' && typeof word.end === 'number'
+                && typeof word.text === 'string' && Number.isFinite(word.start) && Number.isFinite(word.end)
+                && word.start >= 0 && word.end > word.start
+            })
+            .map(w => ({ start: w.start, end: w.end, text: w.text }))
+          : null,
       })
     }
   }
@@ -342,6 +585,132 @@ export const api = {
     return res.data
   },
 
+  // --- Custom AI actions (TS-08) and batches (TS-10) ---------------------
+
+  listCustomActions: async (): Promise<CustomAction[]> => {
+    const res = await fetchJSON<ApiEnvelope<CustomAction[]>>('/recordings/custom-actions', { signal: AbortSignal.timeout(20000) })
+    return res.data
+  },
+
+  createCustomAction: async (input: { name: string; instruction: string; description?: string }): Promise<CustomAction> => {
+    const res = await fetchJSON<ApiEnvelope<CustomAction>>('/recordings/custom-actions', {
+      method: 'POST', body: JSON.stringify(input), signal: AbortSignal.timeout(20000),
+    })
+    return res.data
+  },
+
+  deleteCustomAction: async (actionId: string): Promise<void> => {
+    await fetchJSON<ApiEnvelope<unknown>>(`/recordings/custom-actions/${encodeURIComponent(actionId)}`, {
+      method: 'DELETE', signal: AbortSignal.timeout(20000),
+    })
+  },
+
+  runCustomAction: async (id: string, actionId: string): Promise<CustomActionResult> => {
+    const res = await fetchJSON<ApiEnvelope<CustomActionResult>>(
+      `/recordings/${id}/transcript/custom-actions/${encodeURIComponent(actionId)}`,
+      { method: 'POST', body: JSON.stringify({}), signal: AbortSignal.timeout(180000) })
+    return res.data
+  },
+
+  estimateBatch: async (recordingIds: string[]): Promise<BatchEstimate> => {
+    const res = await fetchJSON<ApiEnvelope<BatchEstimate>>('/recordings/batch/estimate', {
+      method: 'POST', body: JSON.stringify({ recordingIds }), signal: AbortSignal.timeout(20000),
+    })
+    return res.data
+  },
+
+  startBatch: async (recordingIds: string[], options: { retryOf?: string } = {}): Promise<BatchJob> => {
+    const res = await fetchJSON<ApiEnvelope<BatchJob>>('/recordings/batch', {
+      method: 'POST', body: JSON.stringify({ recordingIds, confirm: true, ...options }), signal: AbortSignal.timeout(30000),
+    })
+    return res.data
+  },
+
+  getBatch: async (batchId: string): Promise<BatchJob> => {
+    const res = await fetchJSON<ApiEnvelope<BatchJob>>(`/recordings/batch/${encodeURIComponent(batchId)}`, { signal: AbortSignal.timeout(20000) })
+    return res.data
+  },
+
+  cancelBatch: async (batchId: string): Promise<void> => {
+    await fetchJSON<ApiEnvelope<unknown>>(`/recordings/batch/${encodeURIComponent(batchId)}/cancel`, {
+      method: 'POST', body: JSON.stringify({}), signal: AbortSignal.timeout(20000),
+    })
+  },
+
+  // --- Transcript Studio -------------------------------------------------
+
+  transcriptOperations: async (id: string, operations: TranscriptOperation[], options: { preview?: boolean; revision?: number } = {}): Promise<OperationResult> => {
+    const res = await fetchJSON<ApiEnvelope<OperationResult>>(`/recordings/${id}/transcript/operations`, {
+      method: 'POST', body: JSON.stringify({ operations, ...options }), signal: AbortSignal.timeout(30000),
+    })
+    return res.data
+  },
+
+  transcriptVersions: async (id: string): Promise<TranscriptVersionRow[]> => {
+    const res = await fetchJSON<ApiEnvelope<TranscriptVersionRow[]>>(`/recordings/${id}/transcript/versions`, { signal: AbortSignal.timeout(20000) })
+    return res.data
+  },
+
+  compareTranscriptVersions: async (id: string, before: string, after: string): Promise<VersionComparison> => {
+    const res = await fetchJSON<ApiEnvelope<VersionComparison>>(
+      `/recordings/${id}/transcript/compare?before=${encodeURIComponent(before)}&after=${encodeURIComponent(after)}`,
+      { signal: AbortSignal.timeout(30000) })
+    return res.data
+  },
+
+  promoteTranscriptVersion: async (id: string, versionId: string, revision?: number): Promise<void> => {
+    await fetchJSON<ApiEnvelope<unknown>>(`/recordings/${id}/transcript/versions/${encodeURIComponent(versionId)}/promote`, {
+      method: 'POST', body: JSON.stringify({ revision }), signal: AbortSignal.timeout(20000),
+    })
+  },
+
+  proposeCleanup: async (id: string, options: { punctuation?: boolean; paragraphs?: boolean; removeFillers?: boolean; headings?: boolean }): Promise<CleanupProposal> => {
+    const res = await fetchJSON<ApiEnvelope<CleanupProposal>>(`/recordings/${id}/transcript/cleanup`, {
+      method: 'POST', body: JSON.stringify(options), signal: AbortSignal.timeout(180000),
+    })
+    return res.data
+  },
+
+  saveCleanup: async (id: string, text: string, sourceHash: string, revision?: number): Promise<void> => {
+    await fetchJSON<ApiEnvelope<unknown>>(`/recordings/${id}/transcript/cleanup/save`, {
+      method: 'POST', body: JSON.stringify({ text, sourceHash, revision }), signal: AbortSignal.timeout(30000),
+    })
+  },
+
+  proposeTranslation: async (id: string, targetLanguage: string): Promise<TranslationProposal> => {
+    const res = await fetchJSON<ApiEnvelope<TranslationProposal>>(`/recordings/${id}/transcript/translate`, {
+      method: 'POST', body: JSON.stringify({ targetLanguage }), signal: AbortSignal.timeout(180000),
+    })
+    return res.data
+  },
+
+  saveTranslation: async (id: string, text: string, targetLanguage: string, sourceHash: string): Promise<void> => {
+    await fetchJSON<ApiEnvelope<unknown>>(`/recordings/${id}/transcript/translate/save`, {
+      method: 'POST', body: JSON.stringify({ text, targetLanguage, sourceHash }), signal: AbortSignal.timeout(30000),
+    })
+  },
+
+  extractStructure: async (id: string): Promise<TranscriptStructure> => {
+    const res = await fetchJSON<ApiEnvelope<TranscriptStructure>>(`/recordings/${id}/transcript/structure`, {
+      method: 'POST', body: JSON.stringify({}), signal: AbortSignal.timeout(180000),
+    })
+    return res.data
+  },
+
+  subtitleReadiness: async (id: string): Promise<SubtitleReadiness> => {
+    const res = await fetchJSON<ApiEnvelope<SubtitleReadiness>>(`/recordings/${id}/transcript/subtitles`, { signal: AbortSignal.timeout(20000) })
+    return res.data
+  },
+
+  getPlaudEnvironment: async (options: { refresh?: boolean; signal?: AbortSignal } = {}): Promise<PlaudEnvironment> => {
+    const query = options.refresh ? '?refresh=1' : ''
+    const timeout = AbortSignal.timeout(30000)
+    const res = await fetchJSON<ApiEnvelope<PlaudEnvironment>>(`/plaud/environment${query}`, {
+      signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
+    })
+    return res.data
+  },
+
   getPlaudStatus: async (signal?: AbortSignal): Promise<PlaudStatus> => {
     const res = await fetchJSON<ApiEnvelope<PlaudStatus>>('/plaud/status', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(45000)]) : AbortSignal.timeout(45000) })
     return res.data
@@ -366,6 +735,54 @@ export const api = {
     throw new Error('Import status timed out. Check the library before retrying.')
   },
   cancelDeviceOperation: () => fetchJSON('/plaud/device-cancel', { method: 'POST', signal: AbortSignal.timeout(10000) }),
+
+  getPlaudIdentity: async (signal?: AbortSignal): Promise<PlaudIdentityStatus> => {
+    const res = await fetchJSON<ApiEnvelope<PlaudIdentityStatus>>('/plaud/identity', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000) })
+    return res.data
+  },
+
+  // Authorizing may trigger a Bluetooth scan to discover the serial and address.
+  authorizePlaudDevice: async (input: { token?: string; domain?: string; serial?: string; identifier?: string }, signal?: AbortSignal): Promise<{ authorized: boolean; serial: string; identifier: string; deviceType: string }> => {
+    const res = await fetchJSON<ApiEnvelope<{ authorized: boolean; serial: string; identifier: string; deviceType: string }>>('/plaud/identity', {
+      method: 'POST', body: JSON.stringify(input),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(90000)]) : AbortSignal.timeout(90000),
+    })
+    return res.data
+  },
+
+  clearPlaudIdentity: async (): Promise<{ removed: boolean }> => {
+    const res = await fetchJSON<ApiEnvelope<{ removed: boolean }>>('/plaud/identity', { method: 'DELETE', signal: AbortSignal.timeout(20000) })
+    return res.data
+  },
+
+  getPlaudCloud: async (signal?: AbortSignal): Promise<PlaudCloudStatus> => {
+    const res = await fetchJSON<ApiEnvelope<PlaudCloudStatus>>('/plaud/cloud', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) })
+    return res.data
+  },
+
+  linkPlaudCloud: async (token: string): Promise<{ linked: boolean; userId: string; region: string; domain: string; expiresAt: number | null; count: number; bytes: number }> => {
+    const res = await fetchJSON<ApiEnvelope<{ linked: boolean; userId: string; region: string; domain: string; expiresAt: number | null; count: number; bytes: number }>>('/plaud/cloud/token', { method: 'POST', body: JSON.stringify({ token }), signal: AbortSignal.timeout(30000) })
+    return res.data
+  },
+
+  unlinkPlaudCloud: async (): Promise<{ removed: boolean }> => {
+    const res = await fetchJSON<ApiEnvelope<{ removed: boolean }>>('/plaud/cloud/token', { method: 'DELETE', signal: AbortSignal.timeout(20000) })
+    return res.data
+  },
+
+  importPlaudCloud: async (options: { ids?: string[]; includeTrash?: boolean }): Promise<{ id: string }> => {
+    const res = await fetchJSON<ApiEnvelope<{ id: string }>>('/plaud/cloud/import', { method: 'POST', body: JSON.stringify(options), signal: AbortSignal.timeout(30000) })
+    return res.data
+  },
+
+  getPlaudCloudImport: async (id: string): Promise<PlaudCloudImportJob> => {
+    const res = await fetchJSON<ApiEnvelope<PlaudCloudImportJob>>(`/plaud/cloud/import/${id}`, { signal: AbortSignal.timeout(20000) })
+    return res.data
+  },
+
+  cancelPlaudCloudImport: async (): Promise<void> => {
+    await fetchJSON('/plaud/cloud/cancel', { method: 'POST', signal: AbortSignal.timeout(20000) })
+  },
 
   getAvailableRecordings: async (): Promise<AvailableRecording[]> => {
     const res = await fetchJSON<ApiEnvelope<AvailableRecording[]>>('/plaud/available-recordings')

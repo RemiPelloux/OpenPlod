@@ -8,7 +8,8 @@ mod desktop_exports;
 use std::{fs, net::UdpSocket, path::PathBuf};
 #[cfg(desktop)]
 use std::sync::Mutex;
-#[cfg(desktop)]
+// Only the opt-in macOS Swift fallback resolves bundled resources.
+#[cfg(all(desktop, target_os = "macos"))]
 use tauri::path::BaseDirectory;
 #[cfg(desktop)]
 use tauri::RunEvent;
@@ -72,14 +73,20 @@ fn read_or_create_token(app_data_dir: &PathBuf) -> Result<String, Box<dyn std::e
 }
 
 #[cfg(desktop)]
+fn ble_bridge_path() -> Option<PathBuf> {
+  let directory = std::env::current_exe().ok()?.parent()?.to_path_buf();
+  let name = if cfg!(windows) { "plaud-bridge.exe" } else { "plaud-bridge" };
+  let path = directory.join(name);
+  path.is_file().then_some(path)
+}
+
+#[cfg(desktop)]
 fn start_service(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
   let app_data_dir = app.path().app_data_dir()?;
   fs::create_dir_all(&app_data_dir)?;
   let library_dir = app_data_dir.join("recordings");
   fs::create_dir_all(&library_dir)?;
   let pairing_token = read_or_create_token(&app_data_dir)?;
-  let scan_script = app.path().resolve("resources/scan-plaud.swift", BaseDirectory::Resource)?;
-  let ble_script = app.path().resolve("resources/plaud-bridge.swift", BaseDirectory::Resource)?;
 
   let command = app
     .shell()
@@ -89,9 +96,25 @@ fn start_service(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     .env("PORT", SERVICE_PORT.to_string())
     .env("DATABASE_URL", app_data_dir.join("openplod.db"))
     .env("OPENPLOD_LIBRARY_PATH", library_dir)
-    .env("OPENPLOD_PAIRING_TOKEN", &pairing_token)
-    .env("OPENPLOD_BLE_SCRIPT", ble_script)
-    .env("OPENPLOD_SCAN_SCRIPT", scan_script);
+    .env("OPENPLOD_PAIRING_TOKEN", &pairing_token);
+  // Every desktop platform speaks Bluetooth through the same bundled
+  // `plaud-bridge` binary (CoreBluetooth, BlueZ or WinRT under one protocol).
+  let command = match ble_bridge_path() {
+    Some(bridge) => command.env("OPENPLOD_BLE_BRIDGE", bridge),
+    None => command,
+  };
+  // The macOS Swift helpers remain shipped as an opt-in fallback backend
+  // (`OPENPLOD_BLE_BACKEND=swift`); they are never selected automatically.
+  #[cfg(target_os = "macos")]
+  let command = command
+    .env(
+      "OPENPLOD_BLE_SCRIPT",
+      app.path().resolve("resources/plaud-bridge.swift", BaseDirectory::Resource)?,
+    )
+    .env(
+      "OPENPLOD_SCAN_SCRIPT",
+      app.path().resolve("resources/scan-plaud.swift", BaseDirectory::Resource)?,
+    );
   let (mut events, child) = command.spawn()?;
   tauri::async_runtime::spawn(async move {
     // Drain sidecar output without persisting potentially private request details.

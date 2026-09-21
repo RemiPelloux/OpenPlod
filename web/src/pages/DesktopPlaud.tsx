@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { NoteDialog } from '@/components/NoteDialogs'
 import { DesktopAuthorizations, DesktopImportPreferences } from '@/components/PlaudAuthorization'
+import { PlaudCloudImport } from '@/components/PlaudCloudImport'
+import { PlaudDeviceAuthorization } from '@/components/PlaudDeviceAuthorization'
+import { PlaudSystemCheck } from '@/components/PlaudSystemCheck'
 import { api, type DashboardStats, type DeviceRecording, type PlaudStatus } from '@/lib/api'
 import './desktop-plaud.css'
 
@@ -114,13 +117,13 @@ export function DesktopPlaud() {
           <div className="plaud-secondary-actions"><Button size="sm" variant="outline" disabled={busy || !pending.length} onClick={() => setConfirmation(pending)}><Download />Import new</Button><Button asChild variant="outline" size="sm"><Link to="/recordings"><FolderOpen />Open library</Link></Button></div>
         </div>
       </section>
-      <section className="plaud-health" aria-label="Connection health"><header className="plaud-section-heading"><span className="plaud-section-icon"><ShieldCheck /></span><div><h2>Connection health</h2><p>{access ? 'Recording list verified on this Mac' : 'Awaiting verified device access'}</p></div>{access && <CheckCircle2 className="plaud-positive" />}</header>
+      <section className="plaud-health" aria-label="Connection health"><header className="plaud-section-heading"><span className="plaud-section-icon"><ShieldCheck /></span><div><h2>Connection health</h2><p>{access ? 'Recording list verified on this computer' : 'Awaiting verified device access'}</p></div>{access && <CheckCircle2 className="plaud-positive" />}</header>
         <dl>{states.map(({ icon: Icon, name, value, ok }) => <div key={name}><dt><Icon />{name}</dt><dd className="plaud-state" data-verified={ok}><i />{value}</dd></div>)}</dl>
         {status?.detail && <details className="plaud-diagnostics"><summary>Connection details</summary><p>{status.detail}</p></details>}
       </section>
       <section className="plaud-device-recordings" aria-label="Recordings on Note Pro" ref={recordingSection}>
         <header className="plaud-section-heading"><span className="plaud-section-icon"><FileAudio /></span><div><h2>On your Note Pro</h2><p>{sessions === null ? 'Recording count unknown' : `${sessions.length} recordings / ${pending.length} new`}</p></div><Button size="sm" disabled={busy || !selected.length} onClick={() => setConfirmation(pending.filter(session => selected.includes(session.sessionId)))}><Download /><span>Import selected{selected.length ? ` (${selected.length})` : ''}</span></Button></header>
-        {sessions === null ? <div className="plaud-recordings-empty">{busy ? <Loader2 className="animate-spin" /> : <Bluetooth />}<h3>{busy ? 'Reading your Note Pro' : 'Connect to see recordings'}</h3><p>{status && !status.directTransferAvailable ? 'Device authorization is not configured on this Mac.' : error ? 'The device list is unavailable. No recording count has been reported.' : 'No recording list has been received yet.'}</p>{!busy && <Button variant="outline" size="sm" onClick={() => void scan()}><RefreshCw />{error ? 'Try again' : 'Check device'}</Button>}</div>
+        {sessions === null ? <div className="plaud-recordings-empty">{busy ? <Loader2 className="animate-spin" /> : <Bluetooth />}<h3>{busy ? 'Reading your Note Pro' : 'Connect to see recordings'}</h3><p>{status && !status.directTransferAvailable ? 'Device authorization is not configured on this computer.' : error ? 'The device list is unavailable. No recording count has been reported.' : 'No recording list has been received yet.'}</p>{!busy && <Button variant="outline" size="sm" onClick={() => void scan()}><RefreshCw />{error ? 'Try again' : 'Check device'}</Button>}</div>
           : sessions.length === 0 ? <div className="plaud-recordings-empty"><FileAudio /><h3>No completed recordings returned</h3><p>Finish a recording on the Note Pro, then refresh.</p></div> : <>
             <label className="plaud-select-all"><input type="checkbox" aria-label="Select all new recordings" checked={pending.length > 0 && selected.length === pending.length} ref={node => { if (node) node.indeterminate = selected.length > 0 && selected.length < pending.length }} disabled={busy || !pending.length} onChange={event => setSelected(event.target.checked ? pending.map(session => session.sessionId) : [])} /><span>Select all new</span><small>{sessions.length} on device</small></label>
             <div className="plaud-session-list">{sessions.map(session => <div className="plaud-session" key={session.sessionId}>
@@ -138,7 +141,7 @@ export function DesktopPlaud() {
         </section>
         <DesktopImportPreferences />
       </div>
-      <div className="plaud-authorizations"><DesktopAuthorizations /></div>
+      <div className="plaud-authorizations"><PlaudSystemCheck /><PlaudCloudImport /><PlaudDeviceAuthorization status={status} onAuthorized={() => void scan()} /><DesktopAuthorizations /></div>
     </div>
     {confirmation && <NoteDialog title="Import from Plaud" description={`${confirmation.length} recording${confirmation.length === 1 ? '' : 's'}`} busy={false} onClose={() => setConfirmation(null)}>
       <p className="plaud-confirm-copy">Save the selected audio to your OpenPlod vault? Original recordings will stay on your Plaud.</p><ul className="plaud-confirm-list">{confirmation.map(session => <li key={session.sessionId}><FileAudio /><span>{sessionDate(session)}</span><small>{Math.round(session.size / 1024)} KB</small></li>)}</ul>

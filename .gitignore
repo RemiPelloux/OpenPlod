@@ -4,6 +4,8 @@ web/dist/
 data/
 dist/
 src-tauri/target/
+# The Bluetooth bridge is a separate crate with its own build directory.
+src-tauri/plaud-bridge/target/
 src-tauri/binaries/
 *.db
 *.db-shm
@@ -27,3 +29,6 @@ src-tauri/gen/android/app/libs/*.aar
 .DS_Store
 .local-private/
 .codex/
+
+# Serena MCP workspace cache.
+.serena/

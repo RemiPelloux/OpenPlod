@@ -1,0 +1,14 @@
+/* Batch transcription bar shown above the recording library (roadmap TS-10). */
+.batch-transcribe { margin-bottom: 12px; }
+.batch-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 9px 12px; font-size: 12px; border: 1px solid var(--border); border-radius: 6px; }
+.batch-bar > span:first-child { flex: 1 1 auto; min-width: 0; color: var(--muted-foreground); }
+.batch-bar button svg { width: 14px; height: 14px; margin-right: 5px; }
+.batch-confirm { flex: 1 1 100%; line-height: 1.55; }
+.batch-progress { display: grid; gap: 8px; }
+.batch-failures { list-style: none; margin: 0; padding: 0 0 0 2px; font-size: 11px; line-height: 1.6; color: var(--muted-foreground); }
+.batch-failures code { font-family: ui-monospace, monospace; }
+.batch-error { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 8px; font-size: 12px; color: var(--destructive); }
+.batch-error svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
+.batch-spin { animation: batch-spin 1s linear infinite; }
+@keyframes batch-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .batch-spin { animation: none; } }

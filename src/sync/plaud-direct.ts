@@ -7,24 +7,26 @@ import { decodePlaudAudio } from './plaud-audio';
 import { downloadPlaudSession, listPlaudSessions, recordingHandshake } from './plaud-transfer';
 import { fingerprintFile, importRecordingFile } from '../library/recording-library';
 import { openPlaudCheckpoint } from './plaud-checkpoint';
+import { bluetoothSupported, isBluetoothIdentifier, isDesktopPlatform } from './plaud-bridge';
+import { BINDING_TOKEN_PATTERN, PLAUD_SERIAL_PATTERN, identityFilePath } from './plaud-provision';
 
 interface DeviceIdentity extends PlaudIdentity { identifier: string; serial: string; bindingToken: string }
 const vaultRoot = () => dirname(resolve(process.env.OPENPLOD_LIBRARY_PATH || './data/recordings'));
-const identityPath = () => process.env.OPENPLOD_DEVICE_IDENTITY || join(vaultRoot(), 'plaud-device.json');
+const identityPath = identityFilePath;
 let active: AbortController | null = null;
 
-export const directPlaudConfigured = () => process.platform === 'darwin' && existsSync(identityPath());
+export const directPlaudConfigured = () => isDesktopPlatform() && bluetoothSupported() && existsSync(identityPath());
 export function cancelDirectPlaud() { active?.abort(); }
 
 export async function loadIdentity(): Promise<DeviceIdentity> {
   const file = identityPath(), info = await stat(file);
-  if (!info.isFile() || (info.mode & 0o077) !== 0 || info.uid !== process.getuid?.()) throw new Error('Plaud identity file must be private to this macOS user');
+  if (!info.isFile() || (process.platform !== 'win32' && ((info.mode & 0o077) !== 0 || info.uid !== process.getuid?.()))) throw new Error('Plaud identity file must be private to this user');
   let identity: DeviceIdentity;
   try { identity = JSON.parse(await readFile(file, 'utf8')) as DeviceIdentity; }
   catch { throw new Error('Saved Plaud identity could not be read'); }
   if (!identity || typeof identity !== 'object') throw new Error('Invalid saved Plaud device identity');
-  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(identity.identifier)
-    || !/^[0-9A-F]{16}$/.test(identity.serial) || !/^[\x21-\x7e]{32}$/.test(identity.bindingToken)
+  if (!isBluetoothIdentifier(identity.identifier)
+    || !PLAUD_SERIAL_PATTERN.test(identity.serial) || !BINDING_TOKEN_PATTERN.test(identity.bindingToken)
     || typeof identity.signature !== 'string' || typeof identity.privateKey !== 'string' || typeof identity.publicKey !== 'string') {
     throw new Error('Invalid saved Plaud device identity');
   }
@@ -33,7 +35,7 @@ export async function loadIdentity(): Promise<DeviceIdentity> {
 
 async function withDevice<T>(operation: (connection: PlaudConnection, identity: DeviceIdentity, signal: AbortSignal) => Promise<T>): Promise<T> {
   if (active) throw new Error('A Plaud Bluetooth operation is already running');
-  if (!directPlaudConfigured()) throw new Error('Authorize this Note Pro on this Mac before connecting');
+  if (!directPlaudConfigured()) throw new Error('Authorize this Plaud recorder on this computer before connecting');
   const controller = new AbortController(); active = controller;
   try {
     const identity = await loadIdentity();

@@ -45,6 +45,7 @@ import { RecordingTagsDialog } from "@/components/RecordingTagsDialog";
 import { Button } from "@/components/ui/button";
 import { api, type Recording } from "@/lib/api";
 import { formatDuration } from "@/lib/utils";
+import { BatchTranscribe } from '@/components/BatchTranscribe'
 
 export function Dashboard() {
   const [recordings, setRecordings] = useState<Recording[]>([]),
@@ -237,6 +238,9 @@ export function Dashboard() {
             </div>
             <PlaudImportDialog />
           </header>
+          {retention === "active" && (
+            <BatchTranscribe recordings={recordings} onFinished={() => void load()} />
+          )}
           <div className="studio-library-toolbar">
             <div
               className="studio-source-tabs"
