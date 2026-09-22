@@ -136,6 +136,7 @@ app.post('/import', async c => {
     const body = await c.req.json<{ paths?: string[] }>();
     const root = await configuredSyncPath();
     if (!root) return c.json({ success: false, error: 'Plaud sync folder is not configured.' }, 400);
+    const settings = Object.fromEntries((await db.select().from(userSettings)).map(row => [row.key, row.value]));
     for (const candidate of body.paths ?? []) {
       const sourcePath = resolve(candidate);
       if (sourcePath !== root && !sourcePath.startsWith(`${root}${sep}`)) {
@@ -150,6 +151,7 @@ app.post('/import', async c => {
         await queueRecordingProcessing({
           recordingId: result.recording.id,
           filePath: result.recording.filePath,
+          settings,
         });
       }
     }

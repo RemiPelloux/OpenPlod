@@ -25,13 +25,17 @@ export class PlaudAutoImport {
     try {
       const result = await this.adapter.list(); this.lastChecked = result.checkedAt;
       const observed = new Map<string, number>();
+      const existing = new Set((this.database.query(
+        `SELECT source_recording_id AS sourceId FROM recordings WHERE source_provider=? AND source_recording_id IS NOT NULL`,
+      ).all('plaud') as { sourceId: string }[]).map(row => row.sourceId));
       for (const session of result.sessions) {
         const source = `${result.serial}:${session.sessionId}`; observed.set(source, session.size);
         if (!this.enabled()) break;
         // Wait for an unchanged second observation so in-progress recordings are not imported.
         if (session.size <= 512 || this.previous.get(source) !== session.size) continue;
-        if (this.database.query('SELECT id FROM recordings WHERE source_provider=? AND source_recording_id=?').get('plaud', source)) continue;
+        if (existing.has(source)) continue;
         const imported = await this.adapter.import(session.sessionId);
+        if (imported.added || imported.recording.sourceRecordingId === source) existing.add(source);
         if (imported.added) this.database.query('INSERT INTO plaud_import_events(recording_id,created_at) VALUES(?,?)').run(imported.recording.id, new Date().toISOString());
       }
       this.previous = observed; this.failures = 0; this.error = null; this.retryAt = 0;

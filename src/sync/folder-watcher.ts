@@ -106,7 +106,7 @@ export class FolderWatcher {
   }
 
   /** Process a single file — insert into DB if new, queue for transcription */
-  private async processFile(filePath: string, skipExistingCheck = false): Promise<boolean> {
+  private async processFile(filePath: string, skipExistingCheck = false, settings?: Record<string, string>): Promise<boolean> {
     if (this.processedFiles.has(filePath) || this.pendingFiles.has(filePath)) return false;
     this.pendingFiles.add(filePath);
 
@@ -139,9 +139,11 @@ export class FolderWatcher {
       const route = await queueRecordingProcessing({
         recordingId: recording.id,
         filePath: recording.filePath,
+        settings,
       });
       console.log(`[FolderWatcher] Imported recording ${recording.id}; processing route: ${route}`);
-      if (await this.shouldDeleteSourceAfterImport()) unlinkSync(filePath);
+      const deleteSource = settings ? settings.deleteSourceAfterImport === 'true' : await this.shouldDeleteSourceAfterImport();
+      if (deleteSource) unlinkSync(filePath);
       return true;
     } finally {
       this.pendingFiles.delete(filePath);
@@ -156,6 +158,7 @@ export class FolderWatcher {
       return result;
     }
 
+    const settings = Object.fromEntries((await db.select().from(userSettings)).map(row => [row.key, row.value]));
     const existingRows = await db.select({ filePath: recordings.filePath }).from(recordings);
     const existingPaths = new Set(existingRows.map(recording => recording.filePath));
 
@@ -166,7 +169,7 @@ export class FolderWatcher {
           this.processedFiles.add(rec.path);
           continue;
         }
-        if (await this.processFile(rec.path, true)) {
+        if (await this.processFile(rec.path, true, settings)) {
           result.added++;
           existingPaths.add(rec.path);
         }

@@ -22,25 +22,82 @@ export class RecordingAi {
       question TEXT NOT NULL, state TEXT NOT NULL, result TEXT, created_at TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS idx_ai_conversation ON ai_turns(conversation_id, created_at);`);
   }
-  private active(ids: string[]) { for (const recordingId of ids) this.store.transcript(recordingId); }
+  private loadContexts(recordingIds: string[]) {
+    const ordered: string[] = [];
+    const seen = new Set<string>();
+    for (const recordingId of recordingIds) {
+      id.parse(recordingId);
+      if (!seen.has(recordingId)) { seen.add(recordingId); ordered.push(recordingId); }
+    }
+    const recordings = new Map<string, { filename: string | null }>();
+    const transcripts = new Map<string, { versionId: string | null; fullText: string; origin: string; segments: string | null }>();
+    if (ordered.length) this.store.database.transaction(() => {
+      for (let offset = 0; offset < ordered.length; offset += 400) {
+        const chunk = ordered.slice(offset, offset + 400);
+        const marks = chunk.map(() => '?').join(',');
+        for (const row of this.store.database.query(
+          `SELECT id, original_filename AS filename FROM recordings WHERE retention_state='active' AND id IN (${marks})`,
+        ).all(...chunk) as { id: string; filename: string | null }[]) recordings.set(row.id, { filename: row.filename });
+        for (const row of this.store.database.query(
+          `SELECT recording_id AS id, current_version_id AS versionId, full_text AS fullText, origin, segments FROM transcripts WHERE recording_id IN (${marks})`,
+        ).all(...chunk) as { id: string; versionId: string | null; fullText: string; origin: string; segments: string | null }[]) transcripts.set(row.id, row);
+      }
+    })();
+    return recordingIds.map(recordingId => {
+      const recording = recordings.get(recordingId);
+      const transcript = transcripts.get(recordingId);
+      if (!recording) failure(404, 'recording_not_found', 'Active recording not found.');
+      if (!transcript) failure(404, 'transcript_not_found', 'Saved transcript version not found.');
+      return { recordingId, recording: recording!, transcript: transcript! };
+    });
+  }
+  private active(ids: string[]) { this.loadContexts(ids); }
+  private readyIds(ids: string[]) {
+    const valid = [...new Set(ids.filter(value => id.safeParse(value).success))];
+    const ready = new Set<string>();
+    if (!valid.length) return ready;
+    this.store.database.transaction(() => {
+      for (let offset = 0; offset < valid.length; offset += 400) {
+        const chunk = valid.slice(offset, offset + 400);
+        const marks = chunk.map(() => '?').join(',');
+        for (const row of this.store.database.query(
+          `SELECT r.id FROM recordings r JOIN transcripts t ON t.recording_id=r.id WHERE r.retention_state='active' AND r.id IN (${marks})`,
+        ).all(...chunk) as { id: string }[]) ready.add(row.id);
+      }
+    })();
+    return ready;
+  }
   history(conversationId: string): AiAnswer[] {
     id.parse(conversationId);
     const rows = this.store.database.query("SELECT result,recording_ids AS ids FROM ai_turns WHERE conversation_id=? AND state='ready' ORDER BY created_at,rowid").all(conversationId) as { result: string; ids: string }[];
-    return rows.map(row => { this.active(JSON.parse(row.ids)); return JSON.parse(row.result); });
+    const ordered: string[] = [], seen = new Set<string>();
+    for (const row of rows) for (const recordingId of JSON.parse(row.ids) as string[]) if (!seen.has(recordingId)) { seen.add(recordingId); ordered.push(recordingId); }
+    this.loadContexts(ordered);
+    return rows.map(row => JSON.parse(row.result));
   }
   conversations() {
     const rows = this.store.database.query("SELECT conversation_id AS id,question,recording_ids AS ids,created_at AS createdAt FROM ai_turns WHERE state='ready' ORDER BY created_at DESC LIMIT 200").all() as { id: string; question: string; ids: string; createdAt: string }[];
+    const parsed = rows.map(row => {
+      let ids: string[] | null = null;
+      try {
+        const value = JSON.parse(row.ids);
+        if (Array.isArray(value) && value.every(item => typeof item === 'string')) ids = value;
+      } catch { ids = null; }
+      return { row, ids };
+    });
+    const ready = this.readyIds(parsed.flatMap(item => item.ids ?? []));
     const seen = new Set<string>();
-    return rows.filter(row => { if (seen.has(row.id)) return false; seen.add(row.id); try { this.active(JSON.parse(row.ids)); return true; } catch { return false; } })
-      .slice(0, 30).map(({ ids, ...row }) => ({ ...row, recordingIds: JSON.parse(ids) as string[] }));
+    return parsed.filter(({ row, ids }) => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return !!ids && ids.every(recordingId => ready.has(recordingId));
+    }).slice(0, 30).map(({ row, ids }) => ({ id: row.id, question: row.question, createdAt: row.createdAt, recordingIds: ids! }));
   }
   sources(recordingIds: string[]): AiSource[] {
     const sources: AiSource[] = [];
-    for (const recordingId of recordingIds) {
-      const { recording, transcript } = this.store.transcript(recordingId);
+    for (const { recordingId, recording, transcript } of this.loadContexts(recordingIds)) {
       if (!transcript.fullText.trim()) failure(400, 'empty_transcript', 'Every selected recording needs a saved transcript.');
-      const row = this.store.database.query('SELECT segments FROM transcripts WHERE recording_id=?').get(recordingId) as { segments: string | null };
-      const segments = z.array(z.object({ text: z.string(), start: z.number().finite().nonnegative(), end: z.number().finite().nonnegative() })).safeParse(row.segments ? JSON.parse(row.segments) : []);
+      const segments = z.array(z.object({ text: z.string(), start: z.number().finite().nonnegative(), end: z.number().finite().nonnegative() })).safeParse(transcript.segments ? JSON.parse(transcript.segments) : []);
       const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
       const completeSegments = segments.success && segments.data.length > 0
         && normalize(segments.data.map(segment => segment.text).join(' ')) === normalize(transcript.fullText);

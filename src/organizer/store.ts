@@ -75,14 +75,20 @@ export class OrganizerStore {
     return row ?? fail(404, 'folder_not_found', 'Folder not found.');
   }
 
-  private validParent(id: string | null, self?: string) {
+  private folderParents(): Map<string, string | null> {
+    const rows = this.database.query('SELECT id, parent_id AS parentId FROM note_folders').all() as { id: string; parentId: string | null }[];
+    return new Map(rows.map(row => [row.id, row.parentId]));
+  }
+
+  private validParent(id: string | null, self?: string, parents: Map<string, string | null> = this.folderParents()) {
     let current = id;
     const visited = new Set<string>();
     while (current) {
       if (current === self || visited.has(current)) fail(409, 'folder_cycle', 'A folder cannot contain itself.');
       visited.add(current);
       if (visited.size >= 32) fail(400, 'folder_depth', 'Folders support up to 32 levels.');
-      current = this.folder(current).parentId;
+      if (!parents.has(current)) fail(404, 'folder_not_found', 'Folder not found.');
+      current = parents.get(current) ?? null;
     }
   }
 
@@ -107,10 +113,12 @@ export class OrganizerStore {
     return this.database.transaction(() => {
       const folder = this.folder(id); this.checkRevision(folder.revision, data.revision);
       const name = data.name ?? folder.name, parentId = data.parentId === undefined ? folder.parentId : data.parentId;
-      this.validParent(parentId, id); this.uniqueFolder(name, parentId, id);
+      const parents = this.folderParents();
+      this.validParent(parentId, id, parents); this.uniqueFolder(name, parentId, id);
       // Moving an ancestor must not push descendants beyond the depth limit.
       this.database.query('UPDATE note_folders SET name=?, parent_id=?, revision=revision+1 WHERE id=?').run(name, parentId, id);
-      for (const descendant of this.folders()) this.validParent(descendant.parentId, descendant.id);
+      parents.set(id, parentId);
+      for (const descendantId of parents.keys()) this.validParent(parents.get(descendantId) ?? null, descendantId, parents);
       return this.folders().find(row => row.id === id)!;
     })();
   }

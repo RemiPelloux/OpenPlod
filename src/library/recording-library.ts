@@ -4,7 +4,7 @@ import { copyFile, open, rename, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { db } from '../db/client';
 import { recordings, transcriptVersions, transcripts } from '../db/schema';
-import { and, eq, or } from 'drizzle-orm';
+import { and, eq, inArray, or } from 'drizzle-orm';
 
 export const AUDIO_EXTENSIONS = new Set(['.mp3', '.m4a', '.wav', '.ogg', '.webm', '.aac', '.flac']);
 export const TRASH_RETENTION_DAYS = 30;
@@ -224,14 +224,18 @@ export async function purgeRecording(recordingId: string): Promise<boolean> {
 
 export async function purgeExpiredTrash(now = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-  const trashed = await db.select().from(recordings).where(eq(recordings.retentionState, 'trash'));
-  let purged = 0;
-  for (const recording of trashed) {
-    if (recording.deletedAt && new Date(recording.deletedAt) <= cutoff) {
-      if (await purgeRecording(recording.id)) purged += 1;
-    }
+  const trashed = await db.select({
+    id: recordings.id,
+    filePath: recordings.filePath,
+    deletedAt: recordings.deletedAt,
+  }).from(recordings).where(eq(recordings.retentionState, 'trash'));
+  const expired = trashed.filter(recording => recording.deletedAt && new Date(recording.deletedAt) <= cutoff);
+  for (const recording of expired) await unlink(recording.filePath).catch(() => undefined);
+  for (let index = 0; index < expired.length; index += 500) {
+    const ids = expired.slice(index, index + 500).map(recording => recording.id);
+    await db.delete(recordings).where(inArray(recordings.id, ids));
   }
-  return purged;
+  return expired.length;
 }
 
 export { updateTranscript } from './transcript-history';

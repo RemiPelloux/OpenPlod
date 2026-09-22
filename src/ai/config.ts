@@ -28,11 +28,13 @@ export function readSettings(database: Database): Record<string, string> {
   if (!database.query("SELECT name FROM sqlite_master WHERE type='table' AND name='user_settings'").get()) return {};
   return Object.fromEntries((database.query('SELECT key,value FROM user_settings').all() as {key: string; value: string}[]).map(row => [row.key, row.value]));
 }
-export function readAiConfig(database: Database): AiConfig {
-  const values = readSettings(database);
+export function aiConfigFromSettings(values: Record<string, string>): AiConfig {
   // Legacy engine/key settings remain valid; all new routing is explicit.
   const raw = values.aiConfig ? JSON.parse(values.aiConfig) : { transcriptionEngine: values.transcriptionEngine || 'whisper' };
   return aiConfigSchema.parse(raw);
+}
+export function readAiConfig(database: Database): AiConfig {
+  return aiConfigFromSettings(readSettings(database));
 }
 export function credential(database: Database, provider: string): string | undefined {
   const values = readSettings(database);

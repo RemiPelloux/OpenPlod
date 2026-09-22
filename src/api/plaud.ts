@@ -501,11 +501,18 @@ app.get('/available-recordings', async c => {
   const syncPath = await configuredSyncPath();
   if (!syncPath) return c.json({ success: true, data: [] });
   const watcher = new FolderWatcher(syncPath);
-  const available = await mapWithConcurrency(await watcher.listRecordings(), 4, async file => {
+  const files = await watcher.listRecordings();
+  const known = await db.select({
+    id: recordings.id,
+    fingerprint: recordings.fingerprint,
+    retentionState: recordings.retentionState,
+  }).from(recordings);
+  const byFingerprint = new Map<string, { id: string; retentionState: string | null }>();
+  for (const row of known) if (row.fingerprint && !byFingerprint.has(row.fingerprint)) byFingerprint.set(row.fingerprint, row);
+  const available = await mapWithConcurrency(files, 4, async file => {
     const fingerprint = await fingerprintFile(file.path);
     const durationMs = await audioDurationMs(file.path);
-    const [existing] = await db.select({ id: recordings.id, retentionState: recordings.retentionState })
-      .from(recordings).where(eq(recordings.fingerprint, fingerprint)).limit(1);
+    const existing = byFingerprint.get(fingerprint);
     return {
       filename: file.filename,
       path: file.path,
