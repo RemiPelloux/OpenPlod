@@ -15,6 +15,15 @@ describe('APK-verified Plaud framing', () => {
     expect(() => parseNoteProAdvertisement(data)).toThrow();
   });
 
+  test('accepts a Plaud Note (project 888) advertisement from a real capture', () => {
+    // Shape captured from a Plaud Note (serial replaced with a synthetic value):
+    // byte 10 is 9 and the project code is 888, while the serial and protocol
+    // offsets are identical to the Note Pro.
+    const note = Buffer.from('5900027803045608020209888000000000000184140004b276c0430101', 'hex');
+    expect(parseNoteProAdvertisement(note)).toEqual({ project: 888, serial: '8880000000000001',
+      protocolVersion: 20, encrypted: true });
+  });
+
   test('handshake uses ASCII zero padding and zero mode, not the advertised protocol version', () => {
     const packet = buildHandshake('test-token', 20);
     expect(packet.subarray(0, 6).toString('hex')).toBe('010100020000');

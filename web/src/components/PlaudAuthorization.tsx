@@ -58,7 +58,7 @@ export function PhoneAuthorization({ onDone }: { onDone: () => void }) {
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
   return <section className="device-section" aria-label={t('Authorize phone')}>
-    <div className="device-section-heading"><h2><KeyRound className="inline size-4 mr-2" />{t('Add your Note Pro')}</h2></div>
+    <div className="device-section-heading"><h2><KeyRound className="inline size-4 mr-2" />{t('Add your Plaud recorder')}</h2></div>
     <p className="device-muted">{request ? t('On your desktop, open Plaud device and approve this verification code.') : t('Authorize this phone once from your paired desktop. Audio will download directly over this phone\'s Bluetooth.')}</p>
     {request && <p className="text-2xl font-mono py-4" aria-label={t('Verification code')}>{request.code}</p>}
     {error && <p role="alert" className="device-error">{error}</p>}

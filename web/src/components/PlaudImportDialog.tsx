@@ -130,11 +130,11 @@ export function PlaudImportDialog({ variant = 'default' }: { variant?: 'default'
       <Dialog.Overlay className="plaud-import-overlay" />
       <Dialog.Content className="plaud-import-dialog" data-keyboard={keyboard.current} onEscapeKeyDown={event => { if (busy) event.preventDefault() }} onInteractOutside={event => { if (busy) event.preventDefault() }}>
         <header className="plaud-import-heading">
-          <div><Dialog.Title>{t('Get from Plaud')}</Dialog.Title><Dialog.Description>{mobile ? t('Note Pro / Via your paired desktop') : t('Note Pro / Direct Bluetooth')}</Dialog.Description></div>
+          <div><Dialog.Title>{t('Get from Plaud')}</Dialog.Title><Dialog.Description>{mobile ? t('Plaud / Via your paired desktop') : t('Plaud / Direct Bluetooth')}</Dialog.Description></div>
           <Dialog.Close asChild><Button size="icon" variant="ghost" disabled={!!busy} aria-label={t('Close Plaud import')} title={t('Close')}><X /></Button></Dialog.Close>
         </header>
         <div className="plaud-import-body">
-          <div className="plaud-import-device"><span className="plaud-import-device-icon"><Bluetooth /></span><div><strong>Plaud Note Pro</strong><span>{busy === 'loading' ? t('Connecting and reading device storage...') : rows ? tn(rows.length, '{count} recording on device', '{count} recordings on device') : t('Ready to connect')}</span></div>
+          <div className="plaud-import-device"><span className="plaud-import-device-icon"><Bluetooth /></span><div><strong>{t('Plaud recorder')}</strong><span>{busy === 'loading' ? t('Connecting and reading device storage...') : rows ? tn(rows.length, '{count} recording on device', '{count} recordings on device') : t('Ready to connect')}</span></div>
             <Button variant="outline" size={rows ? 'icon' : 'default'} disabled={!!busy} title={rows ? t('Refresh recordings') : undefined} aria-label={rows ? t('Refresh recordings') : undefined} onClick={() => void load()}>{busy === 'loading' ? <Loader2 className="animate-spin" /> : rows ? <RefreshCw /> : <Bluetooth />}{!rows && t('Connect')}</Button>
           </div>
           {error && <div className="plaud-import-error" role="alert">{error}</div>}

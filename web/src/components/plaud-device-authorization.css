@@ -22,6 +22,7 @@
 .plaud-authorize-help summary { cursor: pointer; }
 .plaud-authorize-help p { padding-top: 8px; margin-bottom: 0; }
 .plaud-authorize-help a { color: var(--primary); text-decoration: underline; }
+.plaud-authorize-hint { margin: -2px 0 10px; font-size: 11px; line-height: 1.45; color: var(--muted-foreground); }
 .plaud-authorize--dialog { padding: 14px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--accent); }
 .plaud-authorize--dialog .plaud-authorize-heading h2 { font-size: 13px; }
 .plaud-authorize--dialog p { font-size: 11px; }

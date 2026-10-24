@@ -2,13 +2,22 @@
 export const PLAUD_COMMAND = { handshake: 1, sessions: 26, download: 28, tail: 29,
   signature: 0xfe10, signatureAccepted: 0xfe11, publicKey: 0xfe12 } as const;
 
+/**
+ * Project codes carried in the advertisement. The vendor client maps these to
+ * device families (`oc7` in the APK): 860 Plaud One, 880 NotePin, 881/883 Note
+ * Pro, 882 NotePin S, 888 Note (non-Pro).
+ */
+export const PLAUD_PROJECTS = new Set([860, 880, 881, 882, 883, 888]);
+
 export function parseNoteProAdvertisement(data: Uint8Array) {
   const bytes = Buffer.from(data);
-  if (bytes.length < 22 || bytes[2] !== 2 || bytes[5] !== 4 || bytes[10] !== 8) {
-    throw new Error('Unsupported or truncated Note Pro advertisement');
+  // The byte at offset 10 differs per model (8 on the Note Pro, 9 on the Note),
+  // so it is not a format marker and must not be used to reject a payload.
+  if (bytes.length < 22 || bytes[2] !== 2 || bytes[5] !== 4) {
+    throw new Error('Unsupported or truncated Plaud advertisement');
   }
   const project = bytes.readUInt16LE(3);
-  if (project !== 881 && project !== 883) throw new Error('Not a supported Note Pro project');
+  if (!PLAUD_PROJECTS.has(project)) throw new Error(`Not a supported Plaud project (${project})`);
   return { project, serial: bytes.subarray(11, 19).toString('hex').toUpperCase(),
     protocolVersion: bytes.readUInt16LE(20), encrypted: bytes.readUInt16LE(20) >= 20 };
 }

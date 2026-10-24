@@ -89,8 +89,10 @@ export async function recordingHandshake(connection: PlaudPackets, token: string
       await connection.write(request);
     } else if (opcode === 1) {
       if (reply.length < 12 || reply[3] !== 0) throw new Error(`Plaud recording access rejected (status ${reply[3] ?? 'unknown'})`);
-      if (reply.readUInt16LE(4) !== 20 || reply[11] !== 1) throw new Error('Unsupported negotiated Plaud audio protocol');
-      return { protocol: reply.readUInt16LE(4), channels: reply[8]! };
+      // reply[11] is isOggAudio: 1 on the Note Pro, 0 on recorders that stream raw
+      // Opus packets. Both are supported; only a nonsense value is a protocol error.
+      if (reply.readUInt16LE(4) !== 20 || reply[11]! > 1) throw new Error('Unsupported negotiated Plaud audio protocol');
+      return { protocol: reply.readUInt16LE(4), channels: reply[8]!, oggAudio: reply[11] === 1 };
     }
   }
   throw new Error('Recording handshake timeout');

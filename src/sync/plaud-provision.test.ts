@@ -64,11 +64,14 @@ describe('deviceTypeForSerial', () => {
     expect(deviceTypeForSerial('8820000000000000')).toBe('notepins');
     expect(deviceTypeForSerial('8830000000000000')).toBe('notepro');
     expect(deviceTypeForSerial('8890000000000000')).toBe('note');
+    // Plaud Note: the cloud registry uses an 18-character serial.
+    expect(deviceTypeForSerial('888000000000000101')).toBe('note');
   });
 
-  test('rejects serials that are not 16 uppercase hex characters', () => {
+  test('rejects serials that are not 16 to 18 uppercase hex characters', () => {
     expect(() => deviceTypeForSerial('8810b50327175322')).toThrow(/serial number/);
     expect(() => deviceTypeForSerial('8810')).toThrow(/serial number/);
+    expect(() => deviceTypeForSerial('8880000000000001010')).toThrow(/serial number/);
   });
 });
 

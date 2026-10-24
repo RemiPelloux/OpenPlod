@@ -139,6 +139,10 @@ async fn find_peripheral(
         .await
         .map_err(|error| format!("Bluetooth scan could not start: {error}"))?;
     let target = normalize_identifier(identifier);
+    // CoreBluetooth reports a zeroed address for every peripheral, so an identity
+    // stored on macOS matches whatever stale cache entry comes first. Treat an
+    // all-zero target as "no target" and let the live scan decide instead.
+    let has_target = !target.is_empty() && target.chars().any(|character| character != '0');
     let deadline = Instant::now() + timeout;
     let mut fallback: Option<Peripheral> = None;
     let mut exact: Option<Peripheral> = None;
@@ -152,7 +156,7 @@ async fn find_peripheral(
             .await
             .map_err(|error| format!("Bluetooth scan failed: {error}"))?;
         for peripheral in peripherals {
-            if !target.is_empty()
+            if has_target
                 && normalize_identifier(&peripheral.address().to_string()) == target
             {
                 exact = Some(peripheral);
@@ -292,10 +296,13 @@ async fn run_scan() -> Result<(), String> {
     Ok(())
 }
 
-/// Best-effort decode of the Plaud Note Pro advertisement payload.
+/// Best-effort decode of the Plaud advertisement payload.
 ///
 /// Mirrors `parseNoteProAdvertisement` in `src/sync/plaud-protocol.ts`: the
-/// serial lives at bytes 11..19 and the protocol version at byte 20.
+/// serial lives at bytes 11..19 and the protocol version at byte 20.  The
+/// project code selects the model (860 Plaud One, 880 NotePin, 881/883 Note
+/// Pro, 882 NotePin S, 888 Note), and byte 10 differs per model, so it is not
+/// a format marker.
 fn parse_note_pro_advertisement(manufacturer_data: &[Value]) -> (Option<String>, Option<u16>) {
     for entry in manufacturer_data {
         let Some(encoded) = entry.get("data").and_then(Value::as_str) else {
@@ -304,11 +311,11 @@ fn parse_note_pro_advertisement(manufacturer_data: &[Value]) -> (Option<String>,
         let Ok(bytes) = BASE64.decode(encoded) else {
             continue;
         };
-        if bytes.len() < 22 || bytes[2] != 2 || bytes[5] != 4 || bytes[10] != 8 {
+        if bytes.len() < 22 || bytes[2] != 2 || bytes[5] != 4 {
             continue;
         }
         let project = u16::from_le_bytes([bytes[3], bytes[4]]);
-        if project != 881 && project != 883 {
+        if !matches!(project, 860 | 880 | 881 | 882 | 883 | 888) {
             continue;
         }
         let serial = bytes[11..19]

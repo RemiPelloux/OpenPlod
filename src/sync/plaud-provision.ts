@@ -29,8 +29,8 @@ export const isPlaudDomain = (value: string): value is PlaudDomain =>
 
 /** The binding token becomes the 32-byte ASCII handshake field. */
 export const BINDING_TOKEN_PATTERN = /^[\x21-\x7e]{1,64}$/;
-/** Recorder serial numbers are 16 uppercase hex characters (e.g. `8810…`). */
-export const PLAUD_SERIAL_PATTERN = /^[0-9A-F]{16}$/;
+/** Recorder serial numbers are 16 to 18 uppercase hex characters (e.g. `8810…` or `8882…`). */
+export const PLAUD_SERIAL_PATTERN = /^[0-9A-F]{16,18}$/;
 
 export interface PlaudAccessTokenClaims {
   /** `sub` — the account's device binding token. */
@@ -107,9 +107,12 @@ export function parseAccessToken(raw: string): PlaudAccessTokenClaims {
 /** Map a recorder serial prefix to the cloud device type used by `sn-sign`. */
 export function deviceTypeForSerial(serial: string): string {
   if (!PLAUD_SERIAL_PATTERN.test(serial)) {
-    throw new Error('A 16-character Plaud serial number is required.');
+    throw new Error('A 16- to 18-character Plaud serial number is required.');
   }
-  return ({ '880': 'notepin', '881': 'notepro', '882': 'notepins', '883': 'notepro' } as Record<string, string>)[serial.slice(0, 3)] ?? 'note';
+  return ({
+    '860': 'plaudone', '880': 'notepin', '881': 'notepro',
+    '882': 'notepins', '883': 'notepro', '888': 'note',
+  } as Record<string, string>)[serial.slice(0, 3)] ?? 'note';
 }
 
 const describePlaudError = (status: number, detail: string): string => {
