@@ -39,20 +39,20 @@
     "build:bridge": "cargo build --release --manifest-path src-tauri/plaud-bridge/Cargo.toml"
   },
   "dependencies": {
-    "@deepgram/sdk": "^3.9.0",
-    "@hono/node-server": "^1.13.0",
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@deepgram/sdk": "^3.13.0",
+    "@hono/node-server": "^1.19.19",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@noble/ciphers": "^2.4.0",
-    "drizzle-orm": "^0.38.0",
-    "hono": "^4.7.0",
-    "zod": "^4.5.4"
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.18",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.4",
-    "@types/bun": "^1.4.0",
+    "@tauri-apps/cli": "^2.12.4",
+    "@types/bun": "^1.4.4",
     "axe-core": "^4.14.0",
-    "drizzle-kit": "^0.30.0",
-    "playwright-core": "^1.64.1",
-    "typescript": "^5.7.0"
+    "drizzle-kit": "^0.31.11",
+    "playwright-core": "^1.65.0",
+    "typescript": "^5.9.3"
   }
 }
