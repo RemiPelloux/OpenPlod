@@ -135,8 +135,8 @@ iCalendar escaping.
   in `src/automation/index.ts`.
 - **Duration filter:** `minDurationSeconds` uses the duration stored at import. Some import
   paths only fill it after transcription, so those recordings do not match a minimum.
-- **Webhook retention:** delivery history is not pruned yet. The outbox and attempt tables grow
-  with event volume.
+- **Webhook retention:** resolved in [1.1.0 Sprint 1](../sprint-1.1.0-1.md): finished deliveries
+  older than 90 days are pruned with their attempts; event rows stay as the idempotency record.
 - **Live connectors:** the Todoist, Linear, and Notion adapters are contract-tested with
   injected fetchers only. Live acceptance, OAuth, and Linear due-date permissions per workspace
   were not verified.

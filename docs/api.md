@@ -270,7 +270,7 @@ Every change bumps `revision`; a stale one is `409 revision_conflict`. `GET /api
 
 `mode` is `hybrid`, `lexical` (FTS5 bm25 only), or `semantic` (vectors only). Up to 50 candidates come from each retriever; the hybrid score is `0.5 × bm25/best bm25 + 0.5 × max(0, cosine)`. The response also has `embedding: { model, kind: "lexical" | "local" | "cloud", fallback, note }` and `index: { sources, passages, pending }`. A search first indexes up to 25 new or changed sources.
 
-Embeddings are local by default: `auto` uses an installed Ollama embedding model (`nomic-embed-text` unless changed), otherwise a built-in, offline **lexical** fallback (signed hashed bag-of-words, SMART `lnc.ltc` TF-IDF; its vector matches are limited to passages sharing a word, so it is not semantic). OpenAI (`text-embedding-3-small`) or Mistral (`mistral-embed`) embeddings are used only when selected with `PUT /search/settings { "embeddingProvider": "openai", "cloudOptIn": true, "confirmCloud": true }`, a key is configured, and local-only mode is off; otherwise the lexical index is used and `note` says why. `GET /search/status` reports settings and counts; `POST /search/reindex { maxSources?, rebuild? }` indexes now.
+Embeddings are local by default: `auto` uses an installed Ollama embedding model (`nomic-embed-text` unless changed), otherwise a built-in, offline **lexical** fallback (signed hashed bag-of-words, SMART `lnc.ltc` TF-IDF; its vector matches are limited to passages sharing a word, so it is not semantic). OpenAI (`text-embedding-3-small`) or Mistral (`mistral-embed`) embeddings are used only when selected with `PUT /search/settings { "embeddingProvider": "openai", "cloudOptIn": true, "confirmCloud": true }`, a key is configured, and local-only mode is off; otherwise the lexical index is used and `note` says why. `GET /search/status` reports settings and counts; `POST /search/reindex { maxSources?, rebuild? }` indexes now. Searches cache the list of installed Ollama models for 30 seconds (15 seconds when Ollama is unreachable), so a newly installed model can take that long to be used; `GET /api/ai-settings/ollama-models` always asks Ollama directly.
 
 Vectors are stored in SQLite as float32 BLOBs per passage and model, with a SHA-256 of the exact source text. Database triggers delete cached passages and vectors when a recording goes to Trash or is purged, when a new transcript version becomes current, and when a note is edited, trashed, or purged; every query also re-checks that each passage still belongs to the current version of an active source.
 
@@ -593,9 +593,11 @@ Transcript versions keep `provenance { provider, model, fingerprint, options, st
 | DELETE | `/webhooks/:id` | Removes the subscription and its delivery history |
 | POST | `/webhooks/:id/rotate-secret` | New secret, returned once; the old one stops signing immediately |
 | POST | `/webhooks/:id/test` | Sends a signed `webhook.test` event now and returns the delivery (also for a disabled subscription) |
-| GET | `/webhooks/:id/deliveries?limit=50` | Latest deliveries (1-200), newest first, each with its `attempts` |
+| GET | `/webhooks/:id/deliveries?limit=50` | Latest deliveries (1-200), newest first, each with its `attempts`. Finished deliveries older than 90 days are pruned (see below) |
 | GET | `/webhooks/deliveries/:deliveryId` | One delivery with attempts |
 | POST | `/webhooks/deliveries/:deliveryId/redeliver` | Sends the same delivery again now, reusing its event and delivery ids |
+
+**History retention.** Every six hours the server removes finished deliveries (any status except `pending` and `delivering`) last updated more than 90 days ago, with their attempts. The event row stays as the deduplication record with its payload cleared, so a re-emitted event is still not delivered twice. A pruned delivery returns `404` and cannot be redelivered.
 
 ```json
 { "id": "…", "name": "n8n", "url": "https://n8n.example.com/webhook/openplod", "host": "n8n.example.com", "external": true,
@@ -914,6 +916,7 @@ Cleanup, translation, custom actions, and structure extraction use the summaries
 | GET | `/api/engines` | Speech engine availability from saved keys and local binaries |
 | GET | `/api/settings` | Legacy settings (sync folder, auto-transcribe/summarize/import, OpenWhistle) with key-presence flags |
 | PUT | `/api/settings/:key` | `{ value }` for one allowed legacy key; `transcriptionEngine` also resets model, diarization, vocabulary, and prompt |
+| PATCH | `/api/settings` | `{ key: value, ... }` for several legacy keys in one transaction. Every key is validated first; one unknown key or rejected value returns `400` and writes nothing. The Settings page saves through this route |
 | GET | `/api/search?q=` | Legacy transcript search (2+ characters). Prefer `/api/v1/search` |
 | GET | `/api/transcripts?offset=&source=` | Active recordings with a transcript, 30 per page, with a 200-character excerpt |
 | GET/POST/PATCH | `/api/jobs[...]` | Legacy job controls; see [Processing Jobs](#processing-jobs) |

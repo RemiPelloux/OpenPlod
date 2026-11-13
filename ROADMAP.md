@@ -200,6 +200,15 @@ The release gates below stay unchecked: they are acceptance runs with real devic
 providers, signed artifacts, and seven days of daily use. Implementation notes for each area are
 in [docs/impl-notes](docs/impl-notes).
 
+## After 1.0: 1.1.0 Sprints
+
+> **1.1.0 Sprint 1 (implemented 2026-11-13).** See the [1.1.0 Sprint 1 plan and outcome](docs/sprint-1.1.0-1.md).
+> Performance and housekeeping. N+1 queries are removed from list endpoints (PERF-01), with
+> query-count regression tests. Webhook delivery history is pruned after 90 days (PERF-02). The
+> Ollama availability check is cached (PERF-03). Legacy settings save in one transaction
+> (PERF-04). Dependencies are refreshed (DEP-01). Nothing here changes a 1.0 checkbox. REL-08
+> still needs its reference-Mac run.
+
 ## Implementation Boundaries
 
 Extend existing modules instead of creating a second processing stack:

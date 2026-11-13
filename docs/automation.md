@@ -53,7 +53,7 @@ Each request has `OpenPlod-Signature: t=<unix seconds>,v1=<hex>`, an HMAC-SHA256
 - A timeout or connection reset is **unknown**: your endpoint may have processed it. It is not retried automatically. If your receiver deduplicates on the event id, **Redeliver** is safe.
 - After 5 deliveries in a row fail, the subscription is disabled and shows why. Fix the endpoint and enable it again.
 - **Redeliver** sends the same event again with the same event and delivery ids.
-- Delivery history keeps every attempt (automatic or manual, status code, duration, error) but never the endpoint's response body. History is not pruned yet.
+- Delivery history keeps every attempt (automatic or manual, status code, duration, error) but never the endpoint's response body. Finished deliveries older than 90 days are pruned with their attempts; pending deliveries are never pruned, and the event id is kept so a pruned event is still not sent twice.
 
 ## Rules
 

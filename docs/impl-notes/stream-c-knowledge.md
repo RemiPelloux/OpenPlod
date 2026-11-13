@@ -72,7 +72,7 @@ deliberately not edited by this stream.
   personal vaults; not measured against the 10,000-note budget). No ANN index.
 - **Indexing is lazy**: each search indexes at most 25 pending sources; there is no background
   indexer or progress UI beyond Settings "Index now" (200 sources per click).
-- **Ollama availability** is checked on every search (`/api/tags`, 5 s timeout); no caching.
+- **Ollama availability** is cached for 30 s (15 s when unreachable) since [1.1.0 Sprint 1](../sprint-1.1.0-1.md); before that every search paid the `/api/tags` check.
 - **No embedding of document passages into chat**: chat retrieval uses transcripts only.
 - **Analysis cancellation** stops the job record but cannot abort an in-flight provider request
   (the analyzer takes no abort signal; `src/analysis` was left alone).

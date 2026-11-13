@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+1.1.0 Sprint 1: performance and housekeeping. See the [sprint plan and outcome](docs/sprint-1.1.0-1.md).
+
+### Changed
+
+- **Faster list endpoints (PERF-01).** Lists no longer run one database query per row. A mobile
+  sync page now takes 3 queries instead of up to 1,000. Also batched: task drafts and the `.ics`
+  calendar, automation run history, webhook deliveries, batch cost estimates, retrieved chat
+  passages, and the Plaud device-recordings list. Responses are unchanged. New query-count
+  regression tests keep it that way.
+- **Settings save in one request (PERF-04).** New `PATCH /api/settings` takes several legacy
+  settings and writes them in one transaction. The Settings page uses it, so a failed save no
+  longer leaves some settings changed and others not. `PUT /api/settings/:key` still works.
+- **Search no longer waits on a stopped Ollama (PERF-03).** The installed-model check is cached
+  for 30 seconds, or 15 seconds when Ollama is unreachable. Before, every search could wait up to
+  5 seconds.
+- **Dependencies (DEP-01).** Updated within their ranges across the backend, web app and Rust
+  crates; `drizzle-orm` 0.45 and `drizzle-kit` 0.31. `eslint-plugin-react-hooks` is pinned at
+  7.0.1 until its new React Compiler rules are addressed.
+
+### Fixed
+
+- **Webhook history is bounded (PERF-02).** Finished deliveries older than 90 days are pruned with
+  their attempts. Pending deliveries are never pruned. The event id is kept, so a pruned event is
+  still not delivered twice.
+
 ## 1.0.0 - 2026-10-15
 
 OpenPlod 1.0 implements the whole 1.0 roadmap: every milestone from 0.5 to 0.9, including the
