@@ -106,11 +106,20 @@ export class ChangeFeed {
     const entities = this.sqlite.query(`SELECT entity_id AS id, MAX(seq) AS seq FROM sync_changes WHERE seq > ? AND entity = 'recording'
       GROUP BY entity_id ORDER BY seq LIMIT ?`).all(from, size) as { id: string; seq: number }[];
     const cursor = entities.length ? entities[entities.length - 1].seq : head;
+    // Two queries per page, not one or two per recording.
+    const ids = JSON.stringify(entities.map(entity => entity.id));
+    const rows = new Map((this.sqlite.query(`${RECORDING_SELECT} WHERE r.id IN (SELECT value FROM json_each(?))`).all(ids) as RecordingRow[]).map(row => [row.id, row]));
+    const missing = entities.filter(entity => !rows.has(entity.id)).map(entity => entity.id);
+    const purges = new Map<string, number | null>();
+    if (missing.length) {
+      const purgeRows = this.sqlite.query(`SELECT recording_id AS id, revision FROM recording_tombstones
+        WHERE event = 'purge' AND recording_id IN (SELECT value FROM json_each(?)) ORDER BY seq`).all(JSON.stringify(missing)) as { id: string; revision: number | null }[];
+      for (const purge of purgeRows) purges.set(purge.id, purge.revision); // ascending seq: the latest purge wins
+    }
     const changes = entities.map(({ id, seq }): FeedRecording | FeedPurged => {
-      const row = this.recording(id);
+      const row = rows.get(id);
       if (row) return this.toFeed(row, seq);
-      const purge = this.sqlite.query(`SELECT revision FROM recording_tombstones WHERE recording_id = ? AND event = 'purge' ORDER BY seq DESC LIMIT 1`).get(id) as { revision: number | null } | null;
-      return { type: 'purged', id, seq, revision: purge?.revision ?? null };
+      return { type: 'purged', id, seq, revision: purges.get(id) ?? null };
     });
     const tombstones = (this.sqlite.query(`SELECT seq, recording_id, event, revision, fingerprint, source_provider, source_recording_id, at
       FROM recording_tombstones WHERE seq > ? AND seq <= ? ORDER BY seq`).all(from, cursor) as {

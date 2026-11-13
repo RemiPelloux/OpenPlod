@@ -54,6 +54,8 @@ const subscriptionColumns = `id, name, url, secret, event_types AS eventTypes, i
 const deliveryColumns = `d.id, d.event_id AS eventId, e.type AS eventType, d.subscription_id AS subscriptionId, d.status, d.attempt_count AS attemptCount,
   d.next_attempt_at AS nextAttemptAt, d.last_status_code AS lastStatusCode, d.last_error AS lastError, d.created_at AS createdAt, d.updated_at AS updatedAt`;
 
+const attemptColumns = 'attempt, trigger, started_at AS startedAt, finished_at AS finishedAt, outcome, status_code AS statusCode, error, duration_ms AS durationMs';
+
 export function initializeWebhooks(database: Database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS webhook_subscriptions (
@@ -98,6 +100,8 @@ export interface WebhookOptions {
   timeoutMs?: number;
   /** Start the delivery worker right after an event is queued (off in tests). */
   autoDeliver?: boolean;
+  /** Days a finished delivery and its attempts are kept before `pruneHistory` removes them. */
+  historyRetentionDays?: number;
   now?: () => number;
 }
 
@@ -113,7 +117,7 @@ export class WebhookService {
     const plain = (database.query('SELECT id, secret FROM webhook_subscriptions').all() as { id: string; secret: string }[]).filter(row => !isEncryptedSecret(row.secret));
     for (const row of plain) database.query('UPDATE webhook_subscriptions SET secret=? WHERE id=? AND secret=?').run(encryptSecret(webhookSecretName(row.id), row.secret), row.id, row.secret);
     this.fetcher = options.fetcher ?? fetch;
-    this.options = { maxAttempts: 6, disableAfter: 5, baseDelayMs: 30000, maxDelayMs: 3600000, timeoutMs: 10000, autoDeliver: true, now: Date.now, ...options };
+    this.options = { maxAttempts: 6, disableAfter: 5, baseDelayMs: 30000, maxDelayMs: 3600000, timeoutMs: 10000, autoDeliver: true, historyRetentionDays: 90, now: Date.now, ...options };
     // A process that stopped mid-request cannot know whether the receiver got it.
     database.query("UPDATE webhook_attempts SET outcome='unknown', error='Interrupted before a response; the receiver may have processed it.', finished_at=? WHERE outcome IS NULL").run(nowIso());
     database.query("UPDATE webhook_deliveries SET status='unknown', last_error='Interrupted before a response; the receiver may have processed it.', next_attempt_at=NULL, updated_at=? WHERE status='delivering'").run(nowIso());
@@ -347,12 +351,34 @@ export class WebhookService {
     this.row(subscriptionId);
     const rows = this.database.query(`SELECT ${deliveryColumns} FROM webhook_deliveries d JOIN webhook_events e ON e.id=d.event_id
       WHERE d.subscription_id=? ORDER BY d.created_at DESC, d.id LIMIT ?`).all(subscriptionId, Math.min(Math.max(limit, 1), 200)) as Omit<WebhookDelivery, 'attempts'>[];
-    return rows.map(row => ({ ...row, attempts: this.attempts(row.id) }));
+    if (!rows.length) return [];
+    const attempts = this.database.query(`SELECT delivery_id AS deliveryId, ${attemptColumns} FROM webhook_attempts
+      WHERE delivery_id IN (SELECT value FROM json_each(?)) ORDER BY id`).all(JSON.stringify(rows.map(row => row.id))) as (WebhookAttempt & { deliveryId: string })[];
+    const byDelivery = new Map<string, WebhookAttempt[]>();
+    for (const { deliveryId, ...attempt } of attempts) { const list = byDelivery.get(deliveryId); if (list) list.push(attempt); else byDelivery.set(deliveryId, [attempt]); }
+    return rows.map(row => ({ ...row, attempts: byDelivery.get(row.id) ?? [] }));
+  }
+
+  /**
+   * Remove finished deliveries (and their attempts) last updated before the
+   * retention window. Pending and in-flight deliveries are never touched. The
+   * event row is kept as the idempotency record, so a re-emitted event is still
+   * not delivered twice; only its payload is cleared once no delivery needs it.
+   */
+  pruneHistory(retentionDays = this.options.historyRetentionDays): { deliveries: number; attempts: number; events: number } {
+    const cutoff = new Date(this.options.now() - retentionDays * 86_400_000).toISOString();
+    return this.database.transaction(() => {
+      const finished = `SELECT id FROM webhook_deliveries WHERE status NOT IN ('pending','delivering') AND updated_at < ?`;
+      const attempts = this.database.query(`DELETE FROM webhook_attempts WHERE delivery_id IN (${finished})`).run(cutoff).changes;
+      const deliveries = this.database.query(`DELETE FROM webhook_deliveries WHERE id IN (${finished})`).run(cutoff).changes;
+      const events = this.database.query(`UPDATE webhook_events SET data='{}' WHERE created_at < ? AND data <> '{}'
+        AND NOT EXISTS (SELECT 1 FROM webhook_deliveries d WHERE d.event_id=webhook_events.id)`).run(cutoff).changes;
+      return { deliveries, attempts, events };
+    })();
   }
 
   private attempts(deliveryId: string): WebhookAttempt[] {
-    return this.database.query(`SELECT attempt, trigger, started_at AS startedAt, finished_at AS finishedAt, outcome, status_code AS statusCode, error, duration_ms AS durationMs
-      FROM webhook_attempts WHERE delivery_id=? ORDER BY id`).all(deliveryId) as WebhookAttempt[];
+    return this.database.query(`SELECT ${attemptColumns} FROM webhook_attempts WHERE delivery_id=? ORDER BY id`).all(deliveryId) as WebhookAttempt[];
   }
 }
 

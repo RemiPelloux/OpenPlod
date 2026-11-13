@@ -129,6 +129,22 @@ export class CloudEmbedder implements EmbeddingProvider {
 }
 
 /**
+ * Searches ask which Ollama models are installed on every query. An unreachable
+ * Ollama costs up to a 5 s timeout per check, so the answer is cached briefly per
+ * fetcher: 30 s when Ollama answers, 15 s when it does not. Settings > "Load local
+ * models" still asks Ollama directly.
+ */
+const INSTALLED_TTL_MS = 30_000, UNREACHABLE_TTL_MS = 15_000;
+const installedCache = new WeakMap<Fetcher, { models: Promise<string[]>; expires: number }>();
+export function cachedOllamaModels(fetcher: Fetcher = fetch, now = Date.now()): Promise<string[]> {
+  const hit = installedCache.get(fetcher);
+  if (hit && hit.expires > now) return hit.models;
+  const entry = { models: installedOllamaModels(fetcher).catch(() => { entry.expires = Date.now() + UNREACHABLE_TTL_MS; return [] as string[]; }), expires: now + INSTALLED_TTL_MS };
+  installedCache.set(fetcher, entry);
+  return entry.models;
+}
+
+/**
  * Pick the embedding provider for this vault. Local first: `auto` uses an installed
  * Ollama embedding model, otherwise the lexical fallback. A cloud provider is only
  * used when it is selected, explicitly opted in, allowed by the privacy mode, and
@@ -140,8 +156,7 @@ export async function resolveEmbedder(database: Database, fetcher: Fetcher = fet
   const fallback = (note: string | null, requested = true) => ({ provider: lexical as EmbeddingProvider, info: { model: lexical.model, kind: lexical.kind, fallback: requested, note } });
   if (settings.embeddingProvider === 'lexical') return fallback(null, false);
   if (settings.embeddingProvider === 'auto' || settings.embeddingProvider === 'ollama') {
-    let installed: string[] = [];
-    try { installed = await installedOllamaModels(fetcher); } catch { installed = []; }
+    const installed = await cachedOllamaModels(fetcher);
     const name = installed.find(model => model === settings.ollamaModel || model === `${settings.ollamaModel}:latest`);
     if (name) {
       const provider = new OllamaEmbedder(name, fetcher);

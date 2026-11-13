@@ -211,3 +211,20 @@ test('the automations API previews, saves and lists rules with run history', asy
   expect(runs.data[0]).toMatchObject({ ruleName: 'Plaud meetings to minutes', recordingId: 'r1', recordingTitle: 'r1.m4a' });
   expect((await api.request('/rules/nope')).status).toBe(404);
 });
+
+test('run history loads a page of runs and their steps in a fixed number of queries', async () => {
+  const { countQueries } = await import('../testing/count-queries');
+  const { db, engine, recording } = fixture();
+  const rule = engine.create(meetingRule());
+  const seed = async (from: number, n: number) => { for (let i = from; i < from + n; i++) { recording(`r${i}`); await engine.onRecordingImported(`r${i}`); } };
+  await seed(0, 1);
+  const small = await countQueries(db, () => engine.runs(rule.id));
+  await seed(1, 29);
+  const large = await countQueries(db, () => engine.runs(rule.id));
+  const all = await countQueries(db, () => engine.runs());
+  expect(large.result).toHaveLength(30);
+  expect(all.result).toHaveLength(30);
+  expect(large.count).toBe(small.count);
+  // Same shape as fetching each run on its own.
+  for (const run of large.result) expect(run).toEqual(engine.run(run.id));
+});

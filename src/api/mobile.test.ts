@@ -254,6 +254,22 @@ describe('change feed and metadata push (MOB-04)', () => {
     expect((await call('/changes?since=999999999', token)).status).toBe(410);
   });
 
+  test('a feed page costs a fixed number of queries however many recordings it lists', async () => {
+    const { ChangeFeed } = await import('../sync/change-feed');
+    const { countQueries } = await import('../testing/count-queries');
+    const feed = new ChangeFeed(sqlite);
+    const { token } = await newClient('Counter');
+    const head = String(feed.head());
+    const ids = [await storeRecording(token, 'count-0')];
+    const small = await countQueries(sqlite, () => feed.changes(head, 500));
+    for (let i = 1; i < 12; i++) ids.push(await storeRecording(token, `count-${i}`));
+    await softDeleteRecording(ids[0]); await purgeRecording(ids[0]);
+    const large = await countQueries(sqlite, () => feed.changes(head, 500));
+    expect(large.result.changes.filter(change => ids.includes(change.id))).toHaveLength(12);
+    expect(large.result.changes.find(change => change.id === ids[0])).toMatchObject({ type: 'purged', revision: expect.any(Number) });
+    expect(large.count).toBeLessThanOrEqual(small.count + 1); // + the purge lookup, once per page
+  });
+
   test('applies queued edits on the current revision and returns conflicts without overwriting', async () => {
     const { token } = await newClient('Editor');
     const recordingId = await storeRecording(token, 'edits');

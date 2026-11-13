@@ -177,3 +177,42 @@ test('the in-process event bus isolates listener failures', async () => {
   finally { console.error = original; off1(); off2(); off3(); }
   expect(seen).toEqual(['document.created']);
 });
+
+test('history pruning removes only finished deliveries past retention and keeps the event as the idempotency record', async () => {
+  const { service, db } = fixture({ historyRetentionDays: 30 }, () => new Response('ok'));
+  const sub = subscription(service);
+  db.query("INSERT INTO recordings(id, recording_type) VALUES ('old','audio'),('new','audio'),('waiting','audio')").run();
+  for (const id of ['old', 'new', 'waiting']) service.handle({ type: 'recording.imported', recordingId: id });
+  await service.deliverDue();
+  const deliveryFor = (id: string) => stableId('webhook-delivery', stableId('webhook-event', 'recording.imported', id), sub.id);
+  // 'old' finished long ago; 'waiting' is old but still pending a retry.
+  db.query("UPDATE webhook_deliveries SET updated_at='2026-01-01T00:00:00.000Z' WHERE id=?").run(deliveryFor('old'));
+  db.query("UPDATE webhook_deliveries SET status='pending', updated_at='2026-01-01T00:00:00.000Z' WHERE id=?").run(deliveryFor('waiting'));
+  db.query("UPDATE webhook_events SET created_at='2026-01-01T00:00:00.000Z'").run();
+
+  expect(service.pruneHistory()).toEqual({ deliveries: 1, attempts: 1, events: 1 });
+  expect(() => service.delivery(deliveryFor('old'))).toThrow('Delivery not found');
+  expect(service.delivery(deliveryFor('new')).status).toBe('delivered');
+  expect(service.delivery(deliveryFor('waiting')).status).toBe('pending');
+  // The same event emitted again is still recognised and not delivered a second time.
+  service.handle({ type: 'recording.imported', recordingId: 'old' });
+  expect((db.query('SELECT COUNT(*) AS n FROM webhook_deliveries WHERE id=?').get(deliveryFor('old')) as { n: number }).n).toBe(0);
+  expect(service.pruneHistory()).toEqual({ deliveries: 0, attempts: 0, events: 0 });
+});
+
+test('listing deliveries loads every attempt in one query', async () => {
+  const { countQueries } = await import('../testing/count-queries');
+  const { service, db } = fixture({}, () => new Response('ok'));
+  const sub = subscription(service);
+  const seed = async (from: number, n: number) => {
+    for (let i = from; i < from + n; i++) { db.query("INSERT INTO recordings(id, recording_type) VALUES (?, 'audio')").run(`r${i}`); service.handle({ type: 'recording.imported', recordingId: `r${i}` }); }
+    await service.deliverDue();
+  };
+  await seed(0, 1);
+  const small = await countQueries(db, () => service.deliveries(sub.id));
+  await seed(1, 49);
+  const large = await countQueries(db, () => service.deliveries(sub.id, 200));
+  expect(large.result).toHaveLength(50);
+  expect(large.count).toBe(small.count);
+  expect(large.result.every(delivery => delivery.attempts.length === 1 && delivery.attempts[0].outcome === 'delivered')).toBe(true);
+});

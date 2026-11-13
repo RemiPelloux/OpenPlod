@@ -103,9 +103,20 @@ export function costGate(database: Database, estimateUsd: number | null, local: 
 }
 
 /** Recording duration and file size for an estimate; unknown values stay null. */
-export function recordingCostInput(database: Database, recordingId: string): { durationSeconds: number | null; fileBytes: number | null; filePath: string | null } {
-  const row = database.query('SELECT duration_seconds AS duration, file_path AS filePath, file_size_bytes AS fileSize FROM recordings WHERE id=?').get(recordingId) as { duration: number | null; filePath: string | null; fileSize: number | null } | null;
-  return { durationSeconds: row?.duration && row.duration > 0 ? row.duration : null, fileBytes: row?.fileSize && row.fileSize > 0 ? row.fileSize : null, filePath: row?.filePath ?? null };
+type CostRow = { id: string; duration: number | null; filePath: string | null; fileSize: number | null };
+type CostInput = { durationSeconds: number | null; fileBytes: number | null; filePath: string | null };
+const COST_COLUMNS = 'id, duration_seconds AS duration, file_path AS filePath, file_size_bytes AS fileSize';
+const costInput = (row: CostRow | null | undefined): CostInput =>
+  ({ durationSeconds: row?.duration && row.duration > 0 ? row.duration : null, fileBytes: row?.fileSize && row.fileSize > 0 ? row.fileSize : null, filePath: row?.filePath ?? null });
+
+export function recordingCostInput(database: Database, recordingId: string): CostInput {
+  return costInput(database.query(`SELECT ${COST_COLUMNS} FROM recordings WHERE id=?`).get(recordingId) as CostRow | null);
+}
+
+/** Cost inputs for many recordings in one query. */
+function recordingCostInputs(database: Database, recordingIds: string[]): Map<string, CostInput> {
+  const rows = database.query(`SELECT ${COST_COLUMNS} FROM recordings WHERE id IN (SELECT value FROM json_each(?))`).all(JSON.stringify(recordingIds)) as CostRow[];
+  return new Map(rows.map(row => [row.id, costInput(row)]));
 }
 
 /**
@@ -114,8 +125,9 @@ export function recordingCostInput(database: Database, recordingId: string): { d
  */
 export function estimateRecordings(database: Database, recordingIds: string[], requested: AiConfig) {
   const { config, options } = effectiveTranscription(database, requested);
+  const inputs = recordingCostInputs(database, recordingIds);
   const items = recordingIds.map(recordingId => {
-    const input = recordingCostInput(database, recordingId);
+    const input = inputs.get(recordingId) ?? costInput(null);
     let fileBytes = input.fileBytes;
     try { if (input.filePath) { const size = Bun.file(input.filePath).size; if (size > 0) fileBytes = size; } } catch { /* stored size stays */ }
     const estimate = estimateTranscription(config, { durationSeconds: input.durationSeconds, fileBytes, model: options.model ?? null, diarize: options.diarize });

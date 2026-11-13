@@ -93,3 +93,17 @@ test('capabilities validate documented languages only and report timestamp granu
   expect(timestampGranularity('assemblyai', null, false)).toBe('none');
   expect(timestampGranularity('assemblyai', null, true)).toBe('segment');
 });
+
+test('batch estimates read every recording in one query, and an unknown id stays unknown', async () => {
+  const { countQueries } = await import('../testing/count-queries');
+  const db = database();
+  const ids = Array.from({ length: 40 }, (_, i) => `rec-${i}`);
+  for (const id of ids) db.query('INSERT INTO recordings VALUES(?,?,?,?)').run(id, 60, '/nonexistent/x.mp3', 1000);
+  const config = aiConfigSchema.parse({ transcriptionEngine: 'openai' });
+  const small = await countQueries(db, () => estimateRecordings(db, ids.slice(0, 1), config));
+  const large = await countQueries(db, () => estimateRecordings(db, [...ids, 'missing'], config));
+  expect(large.count).toBe(small.count);
+  expect(large.result.items.map(item => item.recordingId)).toEqual([...ids, 'missing']);
+  expect(large.result.unknownCount).toBe(1);
+  db.close();
+});

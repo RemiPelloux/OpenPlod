@@ -74,7 +74,15 @@ export class TaskService {
   list(filter: { recordingId?: string; status?: TaskStatus } = {}): TaskDraft[] {
     const rows = this.database.query(`SELECT ${taskColumns} FROM task_drafts WHERE (?1 IS NULL OR recording_id=?1) AND (?2 IS NULL OR status=?2) ORDER BY created_at DESC, id LIMIT 500`)
       .all(filter.recordingId ?? null, filter.status ?? null) as TaskRow[];
-    return rows.map(row => this.withExports(row));
+    return this.withExportsMany(rows);
+  }
+
+  /** Several drafts by id, in the order given. Any unknown id is a 404, as with `get`. */
+  getMany(ids: string[]): TaskDraft[] {
+    const rows = new Map((this.database.query(`SELECT ${taskColumns} FROM task_drafts WHERE id IN (SELECT value FROM json_each(?))`).all(JSON.stringify(ids)) as TaskRow[]).map(row => [row.id, row]));
+    if (ids.some(id => !rows.has(id))) throw new AutomationError(404, 'task_not_found', 'Task draft not found.');
+    const byId = new Map(this.withExportsMany([...rows.values()]).map(task => [task.id, task]));
+    return ids.map(id => byId.get(id)!);
   }
 
   get(id: string): TaskDraft {
@@ -86,6 +94,16 @@ export class TaskService {
   private withExports(row: TaskRow): TaskDraft {
     const exports = this.database.query(`SELECT connector, status, remote_id AS remoteId, remote_url AS remoteUrl, error, attempts, updated_at AS updatedAt FROM task_exports WHERE task_id=? ORDER BY connector`).all(row.id) as TaskExport[];
     return { ...row, exports };
+  }
+
+  /** Exports for a page of drafts in one query. */
+  private withExportsMany(rows: TaskRow[]): TaskDraft[] {
+    if (!rows.length) return [];
+    const exports = this.database.query(`SELECT task_id AS taskId, connector, status, remote_id AS remoteId, remote_url AS remoteUrl, error, attempts, updated_at AS updatedAt
+      FROM task_exports WHERE task_id IN (SELECT value FROM json_each(?)) ORDER BY connector`).all(JSON.stringify(rows.map(row => row.id))) as (TaskExport & { taskId: string })[];
+    const byTask = new Map<string, TaskExport[]>();
+    for (const { taskId, ...item } of exports) { const list = byTask.get(taskId); if (list) list.push(item); else byTask.set(taskId, [item]); }
+    return rows.map(row => ({ ...row, exports: byTask.get(row.id) ?? [] }));
   }
 
   create(input: unknown): TaskDraft {
@@ -251,7 +269,7 @@ export class TaskService {
 
   /** An iCalendar file with one all-day event per dated task. Local only; nothing is sent. */
   calendar(taskIds?: string[]): string {
-    const tasks = (taskIds?.length ? taskIds.map(id => this.get(id)) : this.list()).filter(task => task.dueDate && task.status !== 'dismissed');
+    const tasks = (taskIds?.length ? this.getMany(taskIds) : this.list()).filter(task => task.dueDate && task.status !== 'dismissed');
     const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
     const escape = (value: string) => value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
     const fold = (line: string) => { const parts: string[] = []; let rest = line; while (Buffer.byteLength(rest) > 74) { let cut = 74; while (Buffer.byteLength(rest.slice(0, cut)) > 74) cut--; parts.push(rest.slice(0, cut)); rest = ` ${rest.slice(cut)}`; } parts.push(rest); return parts.join('\r\n'); };

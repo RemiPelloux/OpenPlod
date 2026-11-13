@@ -4,7 +4,7 @@ import { OrganizerStore } from '../organizer/store';
 import { RecordingCollections } from './collections';
 import { KnowledgeIndex, chunkText, chunkTranscript, PASSAGE_MAX_CHARS } from './retrieval';
 import { KnowledgeSuggestions } from './suggestions';
-import { LexicalEmbedder, resolveEmbedder, type Fetcher } from './embeddings';
+import { LexicalEmbedder, cachedOllamaModels, resolveEmbedder, type Fetcher } from './embeddings';
 import { createKnowledgeApi } from '../api/knowledge';
 import { addRecording, editTranscript, knowledgeVault } from './fixtures';
 
@@ -116,6 +116,21 @@ describe('hybrid retrieval (KB-04)', () => {
 });
 
 describe('embedding providers', () => {
+  test('caches the installed-model check briefly, including an unreachable Ollama', async () => {
+    let calls = 0;
+    const down: Fetcher = async () => { calls++; throw new Error('connection refused'); };
+    expect(await cachedOllamaModels(down)).toEqual([]);
+    expect(await cachedOllamaModels(down)).toEqual([]);
+    expect(calls).toBe(1);
+    const up: Fetcher = async () => { calls++; return Response.json({ models: [{ name: 'nomic-embed-text:latest' }] }); };
+    const start = Date.now();
+    expect(await cachedOllamaModels(up, start)).toEqual(['nomic-embed-text:latest']);
+    await cachedOllamaModels(up, start + 1000);
+    expect(calls).toBe(2);
+    await cachedOllamaModels(up, start + 31_000);
+    expect(calls).toBe(3);
+  });
+
   test('uses an installed Ollama embedding model locally, with task prefixes', async () => {
     addRecording(database, { text: 'Vector databases store embeddings.' });
     const calls: { url: string; body: any }[] = [];

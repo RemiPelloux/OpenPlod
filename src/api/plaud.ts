@@ -68,8 +68,10 @@ app.get('/device-recordings', async c => {
     const result = await readDirectPlaudRecordings();
     const saved = await db.select({ id: recordings.id, sourceId: recordings.sourceRecordingId, retention: recordings.retentionState })
       .from(recordings).where(eq(recordings.sourceProvider, 'plaud'));
+    const bySource = new Map<string, typeof saved[number]>();
+    for (const recording of saved) if (recording.sourceId && !bySource.has(recording.sourceId)) bySource.set(recording.sourceId, recording);
     return c.json({ success: true, data: result.sessions.map(session => {
-      const existing = saved.find(recording => recording.sourceId === `${result.serial}:${session.sessionId}`);
+      const existing = bySource.get(`${result.serial}:${session.sessionId}`);
       return { ...session, recordingId: existing?.id ?? null, retentionState: existing?.retention ?? null };
     }), checkedAt: result.checkedAt });
   } catch (error) {

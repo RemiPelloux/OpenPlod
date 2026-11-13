@@ -51,6 +51,10 @@ export function startAutomation(params: { database: Database; queue: JobQueue; o
     void rules.resumeWaiting().catch(error => console.error('[Automation] Rule sweep failed:', error));
   };
   setInterval(tick, params.intervalMs ?? 15000).unref();
+  // Delivery history is bounded: finished deliveries older than the retention window are pruned.
+  const prune = () => { try { webhooks.pruneHistory(); } catch (error) { console.error('[Webhooks] History pruning failed:', error); } };
+  setInterval(prune, 6 * 3600_000).unref();
+  setTimeout(prune, 60_000).unref();
   setTimeout(tick, 1000).unref();
 
   return { webhooks, rules, tasks, webhooksApi: createWebhooksApi(webhooks), automationsApi: createAutomationsApi(rules, tasks) };

@@ -125,3 +125,20 @@ test('the calendar file has one all-day event per dated task and escapes text', 
   expect(ics).toContain('DESCRIPTION:line one\\nline two');
   expect(ics.endsWith('END:VCALENDAR\r\n')).toBe(true);
 });
+
+test('listing drafts and building a calendar do not query once per task', async () => {
+  const { countQueries } = await import('../testing/count-queries');
+  const { db, service } = fixture();
+  const seed = (n: number) => Array.from({ length: n }, (_, i) => service.create({ title: `Task ${i}`, dueDate: '2026-12-01' }).id);
+  const one = seed(1);
+  db.query("INSERT INTO task_exports(id,task_id,connector,status,created_at,updated_at) VALUES('x',?,'todoist','created','t','t')").run(one[0]);
+  const small = await countQueries(db, () => service.list());
+  const smallCalendar = await countQueries(db, () => service.calendar(one));
+  const many = [...one, ...seed(49)];
+  const large = await countQueries(db, () => service.list());
+  const largeCalendar = await countQueries(db, () => service.calendar(many));
+  expect(large.count).toBe(small.count);
+  expect(largeCalendar.count).toBe(smallCalendar.count);
+  expect(large.result.find(task => task.id === one[0])!.exports).toEqual([expect.objectContaining({ connector: 'todoist', status: 'created' })]);
+  expect(() => service.calendar([one[0], 'missing'])).toThrow('Task draft not found');
+});

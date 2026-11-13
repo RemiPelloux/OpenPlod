@@ -214,9 +214,10 @@ export class RecordingAi {
     const result = await this.retriever(question, { limit: RETRIEVED_PASSAGES, signal });
     const origins = new Map<string, string>();
     const passages = result.passages.filter(passage => passage.sourceType === 'transcript' && passage.recordingId && !included.has(passage.recordingId));
-    for (const recordingId of new Set(passages.map(passage => passage.recordingId!))) {
-      const row = this.store.database.query('SELECT origin, current_version_id AS versionId FROM transcripts WHERE recording_id=?').get(recordingId) as { origin: string; versionId: string | null } | null;
-      if (row) origins.set(`${recordingId}:${row.versionId}`, row.origin);
+    if (passages.length) {
+      const rows = this.store.database.query('SELECT recording_id AS recordingId, origin, current_version_id AS versionId FROM transcripts WHERE recording_id IN (SELECT value FROM json_each(?))')
+        .all(JSON.stringify([...new Set(passages.map(passage => passage.recordingId!))])) as { recordingId: string; origin: string; versionId: string | null }[];
+      for (const row of rows) origins.set(`${row.recordingId}:${row.versionId}`, row.origin);
     }
     for (const passage of passages) {
       // Only passages still cut from the current version are sent; their citation then names that exact version.

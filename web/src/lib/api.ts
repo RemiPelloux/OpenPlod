@@ -656,13 +656,14 @@ export const api = {
   },
 
   updateSettings: async (settings: Partial<Settings>): Promise<Settings> => {
-    await Promise.all(Object.entries(settings).map(([key, value]) => {
-      if (value === undefined) return Promise.resolve()
-      if ((key === 'mistralApiKey' || key === 'deepgramApiKey' || key === 'openWhistleApiKey') && value === '') return Promise.resolve()
-      if (key.endsWith('Configured')) return Promise.resolve()
-      const serialized = Array.isArray(value) ? JSON.stringify(value) : String(value)
-      return fetchJSON(`/settings/${key}`, { method: 'PUT', body: JSON.stringify({ value: serialized }) })
-    }))
+    // One request and one server transaction: the save applies completely or not at all.
+    const changes: Record<string, string> = {}
+    for (const [key, value] of Object.entries(settings)) {
+      if (value === undefined || key.endsWith('Configured')) continue
+      if ((key === 'mistralApiKey' || key === 'deepgramApiKey' || key === 'openWhistleApiKey') && value === '') continue
+      changes[key] = Array.isArray(value) ? JSON.stringify(value) : String(value)
+    }
+    if (Object.keys(changes).length) await fetchJSON('/settings', { method: 'PATCH', body: JSON.stringify(changes) })
     return api.getSettings()
   },
 

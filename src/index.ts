@@ -229,37 +229,48 @@ app.get('/api/settings', async (c) => {
   });
 });
 
-app.put('/api/settings/:key', async (c) => {
-  const key = c.req.param('key');
-  const allowedKeys = new Set([
-    'transcriptionEngine',
-    'mistralApiKey',
-    'deepgramApiKey',
-    'syncFolderPath',
-    'autoTranscribe',
-    'autoSummarize',
-    'autoImport',
-    'plaudRecordingTypes',
-    'deleteSourceAfterImport',
-    'openWhistleForwarding',
-    'openWhistleBaseUrl',
-    'openWhistleApiKey',
-    'openWhistleAgentId',
-  ]);
-  if (!allowedKeys.has(key)) return c.json({ success: false, error: 'Unknown setting' }, 400);
-  const { value } = await c.req.json();
-  if (key === 'transcriptionEngine') {
-    if (!['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai'].includes(value)) return c.json({ success: false, error: 'Unknown transcription provider.' }, 400);
-    const config = readAiConfig(sqlite);
-    if (config.privacyMode === 'local-only' && value !== 'whisper') return c.json({ success: false, error: 'Local-only mode blocks cloud transcription.' }, 400);
-    config.transcriptionEngine = value;
-    config.transcriptionModel = ''; config.transcriptionDiarize = false; config.transcriptionVocabulary = []; config.transcriptionPrompt = '';
-    await db.insert(userSettings).values({ key: 'aiConfig', value: JSON.stringify(config) }).onConflictDoUpdate({ target: userSettings.key, set: { value: JSON.stringify(config) } });
+const LEGACY_SETTING_KEYS = new Set([
+  'transcriptionEngine', 'mistralApiKey', 'deepgramApiKey', 'syncFolderPath', 'autoTranscribe', 'autoSummarize', 'autoImport',
+  'plaudRecordingTypes', 'deleteSourceAfterImport', 'openWhistleForwarding', 'openWhistleBaseUrl', 'openWhistleApiKey', 'openWhistleAgentId',
+]);
+const upsertSetting = (key: string, value: string) => sqlite.query(`INSERT INTO user_settings(key, value, updated_at) VALUES(?, ?, ?)
+  ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`).run(key, value, new Date().toISOString());
+
+/** Validate legacy settings, then write them all in one transaction. Returns an error message instead of writing anything. */
+function saveLegacySettings(entries: [string, unknown][]): string | null {
+  for (const [key, value] of entries) {
+    if (!LEGACY_SETTING_KEYS.has(key)) return 'Unknown setting';
+    if (key === 'transcriptionEngine') {
+      if (!['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai'].includes(String(value))) return 'Unknown transcription provider.';
+      if (readAiConfig(sqlite).privacyMode === 'local-only' && value !== 'whisper') return 'Local-only mode blocks cloud transcription.';
+    }
   }
-  const stored = protectSetting(key, String(value));
-  await db.insert(userSettings).values({ key, value: stored })
-    .onConflictDoUpdate({ target: userSettings.key, set: { value: stored, updatedAt: new Date().toISOString() } });
-  return c.json({ success: true });
+  sqlite.transaction(() => {
+    for (const [key, value] of entries) {
+      if (key === 'transcriptionEngine') {
+        const config = readAiConfig(sqlite);
+        config.transcriptionEngine = value as typeof config.transcriptionEngine;
+        config.transcriptionModel = ''; config.transcriptionDiarize = false; config.transcriptionVocabulary = []; config.transcriptionPrompt = '';
+        upsertSetting('aiConfig', JSON.stringify(config));
+      }
+      upsertSetting(key, protectSetting(key, String(value)));
+    }
+  })();
+  return null;
+}
+
+app.put('/api/settings/:key', async (c) => {
+  const { value } = await c.req.json();
+  const error = saveLegacySettings([[c.req.param('key'), value]]);
+  return error ? c.json({ success: false, error }, 400) : c.json({ success: true });
+});
+
+/** Several legacy settings at once: `{ key: value, ... }`. All are validated first; nothing is written if any is rejected. */
+app.patch('/api/settings', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return c.json({ success: false, error: 'Send an object of settings.' }, 400);
+  const error = saveLegacySettings(Object.entries(body));
+  return error ? c.json({ success: false, error }, 400) : c.json({ success: true });
 });
 
 // Jobs

@@ -438,19 +438,27 @@ export class RuleEngine {
     return this.database.query(`SELECT ${stepColumns} FROM automation_run_steps WHERE run_id=? ORDER BY step_index`).all(runId) as RunStep[];
   }
 
-  run(id: string): RuleRun {
-    const row = this.database.query(`SELECT r.id, r.rule_id AS ruleId, a.name AS ruleName, r.recording_id AS recordingId, c.original_filename AS recordingTitle,
+  private static readonly runSelect = `SELECT r.id, r.rule_id AS ruleId, a.name AS ruleName, r.recording_id AS recordingId, c.original_filename AS recordingTitle,
       r.status, r.created_at AS createdAt, r.updated_at AS updatedAt FROM automation_runs r LEFT JOIN automation_rules a ON a.id=r.rule_id
-      LEFT JOIN recordings c ON c.id=r.recording_id WHERE r.id=?`).get(id) as Omit<RuleRun, 'steps'> | null;
+      LEFT JOIN recordings c ON c.id=r.recording_id`;
+
+  run(id: string): RuleRun {
+    const row = this.database.query(`${RuleEngine.runSelect} WHERE r.id=?`).get(id) as Omit<RuleRun, 'steps'> | null;
     if (!row) throw new AutomationError(404, 'run_not_found', 'Automation run not found.');
     return { ...row, steps: this.steps(id) };
   }
 
+  /** A page of runs in two queries: the runs, then every step of those runs. */
   runs(ruleId?: string, limit = 50): RuleRun[] {
-    const ids = (ruleId
-      ? this.database.query('SELECT id FROM automation_runs WHERE rule_id=? ORDER BY created_at DESC, id LIMIT ?').all(ruleId, limit)
-      : this.database.query('SELECT id FROM automation_runs ORDER BY created_at DESC, id LIMIT ?').all(limit)) as { id: string }[];
-    return ids.map(({ id }) => this.run(id));
+    const rows = (ruleId
+      ? this.database.query(`${RuleEngine.runSelect} WHERE r.rule_id=? ORDER BY r.created_at DESC, r.id LIMIT ?`).all(ruleId, limit)
+      : this.database.query(`${RuleEngine.runSelect} ORDER BY r.created_at DESC, r.id LIMIT ?`).all(limit)) as Omit<RuleRun, 'steps'>[];
+    if (!rows.length) return [];
+    const steps = this.database.query(`SELECT run_id AS runId, ${stepColumns} FROM automation_run_steps WHERE run_id IN (SELECT value FROM json_each(?)) ORDER BY run_id, step_index`)
+      .all(JSON.stringify(rows.map(row => row.id))) as (RunStep & { runId: string })[];
+    const byRun = new Map<string, RunStep[]>();
+    for (const { runId, ...step } of steps) { const list = byRun.get(runId); if (list) list.push(step as RunStep); else byRun.set(runId, [step as RunStep]); }
+    return rows.map(row => ({ ...row, steps: byRun.get(row.id) ?? [] }));
   }
 }
 
