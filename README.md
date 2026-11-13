@@ -133,7 +133,7 @@ that only a device owner can add: real-audio runs with live provider accounts, a
 phone, one real Plaud capture to confirm the transfer checksum, signing keys, and the benchmark on
 the reference Mac. After 1.0: live captions, two-way Obsidian sync, more Plaud models, and iOS.
 
-**In progress: 1.1.0.** [Sprint 1](docs/sprint-1.1.0-1.md) is in `main`. List endpoints and mobile sync
+**In progress: 1.1.0.** [Sprint 1](docs/sprint-1.1.0-1.md) is implemented and unreleased. List endpoints and mobile sync
 pages now run a fixed number of database queries, whatever their size. Webhook history is pruned
 after 90 days. Search no longer waits on a stopped Ollama. Settings save in one transaction, and
 dependencies are up to date. See the [changelog](CHANGELOG.md#unreleased).
