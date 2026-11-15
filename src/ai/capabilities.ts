@@ -1,5 +1,9 @@
 import type { SpeechProvider } from './config';
 
+export function omitsTranscriptionHints(provider: SpeechProvider, diarize: boolean): boolean {
+  return provider === 'custom' && diarize;
+}
+
 export type TimestampGranularity = 'word' | 'segment' | 'none';
 /**
  * Languages OpenAI documents for Whisper (and its gpt-4o transcription models),
@@ -17,6 +21,7 @@ const VOXTRAL_LANGUAGES = ['en', 'es', 'fr', 'pt', 'hi', 'de', 'nl', 'it'] as co
  * timed utterances when speaker labels are on.
  */
 export const speechCapabilities = {
+  custom: { label: 'OpenAI-compatible', local: false, models: [] as string[], timestamps: true, diarization: true, vocabulary: true, prompt: true, maxBytes: null, formats: ['wav', 'm4a', 'mp3', 'flac', 'ogg', 'webm', 'aac'], streaming: false, languages: {}, timestampGranularity: {} },
   whisper: { label: 'Whisper.cpp', local: true, models: ['base', 'small', 'medium'], timestamps: true, diarization: false, vocabulary: true, prompt: true, maxBytes: null, formats: ['wav', 'm4a', 'mp3', 'flac', 'ogg', 'webm', 'aac'], streaming: false,
     languages: { base: WHISPER_LANGUAGES, small: WHISPER_LANGUAGES, medium: WHISPER_LANGUAGES }, timestampGranularity: { base: 'segment', small: 'segment', medium: 'segment' } },
   mistral: { label: 'Mistral Voxtral', local: false, models: ['voxtral-mini-latest'], timestamps: true, diarization: false, vocabulary: false, prompt: false, maxBytes: null, formats: ['wav', 'm4a', 'mp3', 'flac', 'ogg', 'webm', 'aac'], streaming: false,
@@ -31,18 +36,22 @@ export const speechCapabilities = {
 
 /** The model a provider runs when none is chosen. */
 export const defaultSpeechModel = (provider: SpeechProvider) => speechCapabilities[provider].models[0];
+function documentedValue<T>(table: Record<string, T>, model: string | undefined): T | undefined {
+  return model && Object.prototype.hasOwnProperty.call(table, model) ? table[model] : undefined;
+}
 /** Documented languages for a model, or null when unknown. */
 export function speechLanguages(provider: SpeechProvider, model?: string | null): readonly string[] | null {
-  return (speechCapabilities[provider].languages as Record<string, readonly string[] | null>)[model || defaultSpeechModel(provider)] ?? null;
+  return documentedValue<readonly string[] | null>(speechCapabilities[provider].languages, model || defaultSpeechModel(provider)) ?? null;
 }
 export function timestampGranularity(provider: SpeechProvider, model?: string | null, diarize = false): TimestampGranularity {
   if (provider === 'assemblyai' && !diarize) return 'none';
-  return (speechCapabilities[provider].timestampGranularity as Record<string, TimestampGranularity>)[model || defaultSpeechModel(provider)] ?? 'none';
+  return documentedValue<TimestampGranularity>(speechCapabilities[provider].timestampGranularity, model || defaultSpeechModel(provider)) ?? 'none';
 }
 
 export function validateSpeechOptions(provider: SpeechProvider, options: { model?: string; diarize?: boolean; vocabulary?: string[]; prompt?: string; language?: string }): void {
   const capabilities = speechCapabilities[provider];
-  if (options.model && !(capabilities.models as readonly string[]).includes(options.model)) throw new Error(`Unsupported ${provider} transcription model.`);
+  if (provider === 'custom' && !options.model?.trim()) throw new Error('Select a model from the configured server.');
+  if (provider !== 'custom' && options.model && !(capabilities.models as readonly string[]).includes(options.model)) throw new Error(`Unsupported ${provider} transcription model.`);
   if (options.diarize && !capabilities.diarization) throw new Error(`${provider} does not support speaker labels in this adapter.`);
   if (options.vocabulary?.length && !capabilities.vocabulary) throw new Error(`${provider} does not support vocabulary hints in this adapter.`);
   if (options.prompt?.trim() && !capabilities.prompt) throw new Error(`${provider} does not accept a context prompt in this adapter.`);

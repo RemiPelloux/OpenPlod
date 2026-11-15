@@ -16,6 +16,7 @@ export type SpeechPrice = { usdPerMinute: number | null; note?: string };
 export type TextPrice = { usdPerMillionInput: number; usdPerMillionOutput: number } | null;
 
 export const speechPrices: Record<SpeechProvider, Record<string, SpeechPrice>> = {
+  custom: {},
   whisper: { base: { usdPerMinute: 0, note: 'Runs on this computer.' }, small: { usdPerMinute: 0, note: 'Runs on this computer.' }, medium: { usdPerMinute: 0, note: 'Runs on this computer.' } },
   mistral: { 'voxtral-mini-latest': { usdPerMinute: 0.001 } },
   deepgram: { 'nova-2': { usdPerMinute: null, note: 'Plan- and add-on-dependent; not estimated.' }, 'nova-3': { usdPerMinute: null, note: 'Plan- and add-on-dependent; not estimated.' } },
@@ -35,7 +36,8 @@ export const textPrices: Record<TextProvider, Record<string, TextPrice>> = {
 
 export function speechPrice(provider: SpeechProvider, model: string | undefined | null): SpeechPrice {
   const table = speechPrices[provider];
-  return table[model || Object.keys(table)[0]] ?? { usdPerMinute: null, note: 'No documented price for this model.' };
+  const key = model || Object.keys(table)[0];
+  return key && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : { usdPerMinute: null, note: 'No documented price for this model.' };
 }
 
 /** Estimated USD for `seconds` of audio, or null when the price (or the duration) is unknown. */

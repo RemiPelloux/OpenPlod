@@ -107,3 +107,12 @@ test('batch estimates read every recording in one query, and an unknown id stays
   expect(large.result.unknownCount).toBe(1);
   db.close();
 });
+
+
+test('inherited property names are not documented custom model capabilities', () => {
+  for (const model of ['constructor', 'toString', '__proto__']) {
+    expect(speechLanguages('custom', model)).toBeNull();
+    expect(timestampGranularity('custom', model)).toBe('none');
+    expect(() => validateSpeechOptions('custom', { model, language: 'fr' })).not.toThrow();
+  }
+});

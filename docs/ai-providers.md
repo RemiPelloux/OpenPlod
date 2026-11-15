@@ -8,7 +8,7 @@ Open Settings > AI providers. Speech-to-text receives audio; summaries, document
 
 | Task | Implemented adapters | Important limits |
 | --- | --- | --- |
-| Transcription | Mistral Voxtral, Whisper.cpp, Deepgram, OpenAI, AssemblyAI | OpenAI rejects files over 25 MB and AssemblyAI is capped at 100 MB by OpenPlod; larger files are split into chunks where the provider allows it (see [Long Audio](#long-audio)) |
+| Transcription | Mistral Voxtral, Whisper.cpp, Deepgram, OpenAI, AssemblyAI, and a custom OpenAI-compatible endpoint | OpenAI rejects files over 25 MB and AssemblyAI is capped at 100 MB by OpenPlod; larger files are split into chunks where the provider allows it (see [Long Audio](#long-audio)) |
 | Summaries, documents, cited chat | Mistral, OpenAI, Anthropic, Gemini, Ollama, a custom OpenAI-compatible endpoint | Complete results required (an incomplete or empty answer is an error). No fabricated fallback response. Input-size bounds are enforced without truncation |
 | Local processing | Whisper.cpp, Ollama, and a custom endpoint on loopback | Install local models first. Ollama uses 127.0.0.1:11434 only, excludes remote/cloud entries, and never downloads models automatically |
 
@@ -48,8 +48,15 @@ The `custom` text provider sends chat requests to `{customBaseUrl}/chat/completi
 - It counts as a **cloud** provider unless the URL is loopback, so local-only mode allows it only on loopback.
 - Compatibility is not assumed: JSON mode is not requested, and each feature validates the output itself. The connection check lists `GET {base}/models`.
 - Spending for a custom endpoint is always unknown (no price table).
+- The saved key is encrypted at rest and excluded from unencrypted backups.
 
-In this build `geminiApiKey` and `customApiKey` are stored without the at-rest encryption applied to the Mistral, Deepgram, OpenAI, AssemblyAI, and Anthropic keys, and they are not removed from unencrypted backups.
+### Custom transcription
+
+Under **Settings → AI providers → Transcription**, choose **Custom endpoint**, enter the server's API base URL (for example, `http://127.0.0.1:8000/v1`), and select **Load server models**. Choose a model and save. If the server requires authentication, enter its optional custom API key. The URL and credential are shared with the custom text provider. Saving a different endpoint clears the previous key unless a replacement is supplied.
+
+OpenPlod sends audio to `POST {base}/audio/transcriptions`. WAV uploads are sent directly; other formats are converted to WAV with ffmpeg or macOS afconvert. Model discovery confirms connectivity only. The selected model and server must implement audio transcription and the requested response format.
+
+**Speaker labels** requests `response_format=diarized_json` and `chunking_strategy=auto`. The response must contain segments with speaker labels and timestamps. Context and vocabulary are retained in settings, omitted from these requests, and recorded as ignored for the job. Without speaker labels, the adapter requests `verbose_json` and asks for word timings where supported.
 
 ## Per-Task Fallback
 

@@ -9,7 +9,7 @@ import {
 
 let database: Database;
 const recordingId = crypto.randomUUID();
-const available: Record<SpeechProvider, boolean> = { whisper: false, mistral: true, deepgram: true, openai: false, assemblyai: false };
+const available: Record<SpeechProvider, boolean> = { custom: false, whisper: false, mistral: true, deepgram: true, openai: false, assemblyai: false };
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
 
 beforeEach(() => {
@@ -61,6 +61,21 @@ describe('comparison requests', () => {
     const deepgram = prepareComparison(database, recordingId, { provider: 'deepgram', model: 'nova-3', confirm: true }, available);
     expect(deepgram.config).toMatchObject({ transcriptionModel: 'nova-3', transcriptionVocabulary: ['OpenPlod'] });
     expect(() => prepareComparison(database, recordingId, { provider: 'deepgram', model: 'gpt-4o', confirm: true }, available)).toThrow('Unsupported');
+  });
+
+  test('compare with a discovered custom model and record hints omitted by diarization', () => {
+    database.query('UPDATE user_settings SET value = ? WHERE key = ?').run(JSON.stringify({
+      customBaseUrl: 'http://127.0.0.1:8000/v1', transcriptionDiarize: true,
+      transcriptionVocabulary: ['OpenPlod'], transcriptionPrompt: 'Meeting context',
+    }), 'aiConfig');
+    const request = { provider: 'custom', model: 'VibeVoice-ASR', confirm: true };
+    const providers = { ...available, custom: true };
+    expect(() => prepareComparison(database, recordingId, { ...request, expectedCustomEndpoint: 'https://other.example/v1' }, providers)).toThrow('endpoint changed');
+    const prepared = prepareComparison(database, recordingId, { ...request, expectedCustomEndpoint: 'http://127.0.0.1:8000/v1' }, providers);
+    expect(prepared.config).toMatchObject({
+      transcriptionModel: 'VibeVoice-ASR', transcriptionDiarize: true, transcriptionPrompt: '', transcriptionVocabulary: [],
+    });
+    expect(prepared.compare.ignoredHints).toEqual(['vocabulary', 'prompt']);
   });
 });
 

@@ -2,7 +2,7 @@ import type { Database } from 'bun:sqlite';
 import { z } from 'zod';
 import { revealSettings } from '../vault/secrets';
 
-export const speechProviders = ['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai'] as const;
+export const speechProviders = ['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai', 'custom'] as const;
 export const textProviders = ['mistral', 'openai', 'anthropic', 'ollama', 'gemini', 'custom'] as const;
 export type SpeechProvider = typeof speechProviders[number];
 export type TextProvider = typeof textProviders[number];
@@ -23,6 +23,10 @@ export function customEndpoint(value: string): { base: string; loopback: boolean
   if (url.username || url.password || url.search || url.hash) throw new Error('Custom endpoint URLs cannot contain credentials, query strings or fragments.');
   return { base: `${url.origin}${url.pathname.replace(/\/+$/, '')}`, loopback };
 }
+export function sameCustomEndpoint(left: string, right: string): boolean {
+  if (!left || !right) return left === right;
+  return customEndpoint(left).base === customEndpoint(right).base;
+}
 const fallbackEntry = z.object({ provider: z.enum(textProviders), model: model.default('') }).strict();
 const usd = z.number().finite().min(0).max(100000).nullable().default(null);
 export const aiConfigSchema = z.object({
@@ -32,7 +36,7 @@ export const aiConfigSchema = z.object({
   transcriptionLanguage: z.string().regex(/^(auto|[a-z]{2,3}(-[A-Z]{2})?)$/).default('auto'),
   transcriptionDiarize: z.boolean().default(false),
   transcriptionVocabulary: z.array(z.string().trim().min(1).max(80)).max(100).default([]),
-  transcriptionFallback: z.array(z.enum(speechProviders)).max(4).default([]),
+  transcriptionFallback: z.array(z.enum(speechProviders).exclude(['custom'])).max(4).default([]),
   /** One-off context prompt for providers that accept one (see capabilities.prompt). */
   transcriptionPrompt: z.string().trim().max(2000).default(''),
   /** Default transcription profile id, or '' for none. */
@@ -66,6 +70,9 @@ export function readSettings(database: Database): Record<string, string> {
 export function aiConfigFromSettings(values: Record<string, string>): AiConfig {
   // Legacy engine/key settings remain valid; all new routing is explicit.
   const raw = values.aiConfig ? JSON.parse(values.aiConfig) : { transcriptionEngine: values.transcriptionEngine || 'whisper' };
+  if (Array.isArray(raw?.transcriptionFallback)) {
+    raw.transcriptionFallback = raw.transcriptionFallback.filter((provider: unknown) => provider !== 'custom');
+  }
   return aiConfigSchema.parse(raw);
 }
 export function readAiConfig(database: Database): AiConfig {
@@ -86,6 +93,11 @@ export function assertPrivacy(config: Pick<AiConfig, 'privacyMode' | 'customBase
   if (config.privacyMode === 'local-only' && !isLocalProvider(config, provider))
     throw new Error('Local-only mode blocks this provider. Change AI settings before sending data.');
 }
+
+/** Apply the latest privacy mode to the endpoint the request will use. */
+export function assertLivePrivacy(database: Database, customBaseUrl: string, provider: SpeechProvider | TextProvider): void {
+  assertPrivacy({ privacyMode: readAiConfig(database).privacyMode, customBaseUrl }, provider);
+}
 export const textModels: Record<TextProvider, string> = {
   mistral: 'mistral-small-latest', openai: 'gpt-4.1-mini', anthropic: 'claude-sonnet-4-5', ollama: '', gemini: 'gemini-2.5-flash', custom: '',
 };
@@ -102,7 +114,7 @@ function resolveText(database: Database, config: AiConfig, provider: TextProvide
     if (!config.customBaseUrl) throw new Error('Enter the custom endpoint URL in AI settings.');
     baseUrl = customEndpoint(config.customBaseUrl).base;
   } else if (provider !== 'ollama' && !apiKey) throw new Error(`Add a ${providerLabel(provider)} API key in AI settings.`);
-  return { provider, model: selectedModel, apiKey, ...(baseUrl ? { baseUrl } : {}), beforeSend: () => assertPrivacy(readAiConfig(database), provider) };
+  return { provider, model: selectedModel, apiKey, ...(baseUrl ? { baseUrl } : {}), beforeSend: () => assertLivePrivacy(database, baseUrl ?? '', provider) };
 }
 /**
  * The provider for a text task, plus its explicit fallbacks (AI-07). The primary

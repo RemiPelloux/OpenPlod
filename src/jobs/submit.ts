@@ -1,8 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { aiConfigSchema, assertPrivacy, readAiConfig, type AiConfig } from '../ai/config';
-import { speechCapabilities } from '../ai/capabilities';
+import { aiConfigSchema, assertPrivacy, isLocalProvider, readAiConfig, type AiConfig } from '../ai/config';
 import { validateEffective } from '../ai/transcription-profiles';
 import { estimateRecordings } from '../ai/spending';
 import type { Job, JobQueue } from './queue';
@@ -32,10 +31,11 @@ export function transcriptionOverrides(value: unknown): Partial<AiConfig> {
 
 export interface TranscriptionPlan {
   recordingId: string; provider: string; model: string | null; profile: string | null;
-  /** True when audio stays on this computer (Whisper.cpp). */
+  /** True when the primary and every fallback keep audio on this computer. */
   local: boolean;
   /** A cloud provider receives the audio and may bill for it; MCP and API clients must confirm this. */
   requiresCloudConsent: boolean;
+  cloudProviders: AiConfig['transcriptionEngine'][];
 }
 
 /** Resolve what a transcription job would do, without queueing it or contacting a provider. */
@@ -53,8 +53,10 @@ export function planTranscription(database: Database, recordingId: string, reque
     const known = error instanceof Error && /profile|does not (support|accept)|Unsupported|Local-only/.test(error.message);
     return fail(400, 'invalid_options', known ? (error as Error).message : 'Invalid or privacy-blocked transcription options.');
   }
-  const local = speechCapabilities[engine].local;
-  return { config, filePath: recording!.filePath, plan: { recordingId, provider: engine, model, profile, local, requiresCloudConsent: !local } };
+  const cloudProviders = [...new Set([engine, ...config.transcriptionFallback])]
+    .filter(provider => !isLocalProvider(config, provider));
+  const local = cloudProviders.length === 0;
+  return { config, filePath: recording!.filePath, plan: { recordingId, provider: engine, model, profile, local, requiresCloudConsent: !local, cloudProviders } };
 }
 
 export function initializeJobRequests(database: Database) {
@@ -66,10 +68,10 @@ export function initializeJobRequests(database: Database) {
  * transcription of the same recording is queued or running, since the queue
  * would otherwise hand back that job and silently drop these options.
  */
-export async function submitTranscription(database: Database, queue: JobQueue, input: { recordingId: string; overrides?: unknown; idempotencyKey?: string | null; confirmCost?: boolean }): Promise<{ job: Job; plan: TranscriptionPlan; replayed: boolean }> {
+export async function submitTranscription(database: Database, queue: JobQueue, input: { recordingId: string; overrides?: unknown; idempotencyKey?: string | null; confirmCost?: boolean; expectedCustomEndpoint?: unknown; expectedProvider?: unknown }): Promise<{ job: Job; plan: TranscriptionPlan; replayed: boolean }> {
   const overrides = transcriptionOverrides(input.overrides);
   const key = input.idempotencyKey ? idempotencyKeySchema.parse(input.idempotencyKey) : null;
-  const requestHash = hash({ type: 'process-recording', recordingId: input.recordingId, overrides });
+  const requestHash = hash({ type: 'process-recording', recordingId: input.recordingId, overrides, expectedProvider: input.expectedProvider, expectedCustomEndpoint: input.expectedCustomEndpoint });
   if (key) {
     initializeJobRequests(database);
     const existing = database.query('SELECT request_hash AS hash, job_id AS jobId FROM job_requests WHERE idempotency_key=?').get(key) as { hash: string; jobId: string } | null;
@@ -81,6 +83,12 @@ export async function submitTranscription(database: Database, queue: JobQueue, i
     }
   }
   const { config, filePath, plan } = planTranscription(database, input.recordingId, overrides);
+  if (input.expectedProvider !== undefined && input.expectedProvider !== plan.provider) {
+    fail(409, 'transcription_provider_changed', 'The transcription provider changed. Review the destination and confirm again.');
+  }
+  if (input.expectedCustomEndpoint !== undefined && input.expectedCustomEndpoint !== config.customBaseUrl) {
+    fail(409, 'custom_endpoint_changed', 'The custom endpoint changed. Review the destination and confirm again.');
+  }
   if (queue.activeJob('process-recording', input.recordingId)) fail(409, 'job_active', 'This recording is already being processed. Cancel that job before reprocessing.');
   // AI-10: an estimate over the per-job threshold or the remaining budget needs explicit confirmation.
   const costConfirmed = input.confirmCost === true;
@@ -89,7 +97,7 @@ export async function submitTranscription(database: Database, queue: JobQueue, i
     if (cost.confirmationRequired) fail(409, 'cost_confirmation_required', `Confirm the estimated cost first. ${cost.reasons.join(' ')}`, cost);
   }
   database.query("UPDATE recordings SET status='pending', error_message=NULL, processed_at=NULL WHERE id=?").run(input.recordingId);
-  const job = await queue.add('process-recording', { recordingId: input.recordingId, filePath, config, ...(costConfirmed ? { costConfirmed: true } : {}) });
+  const job = await queue.add('process-recording', { recordingId: input.recordingId, filePath, config, expectedProvider: plan.provider, ...(costConfirmed ? { costConfirmed: true } : {}) });
   if (key) database.query('INSERT OR IGNORE INTO job_requests(idempotency_key, request_hash, job_id, created_at) VALUES(?,?,?,?)').run(key, requestHash, job.id, new Date().toISOString());
   return { job, plan, replayed: false };
 }

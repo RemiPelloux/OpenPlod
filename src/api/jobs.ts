@@ -113,7 +113,7 @@ export function createJobsApi(queue: JobQueue, database: Database) {
       if (input.dryRun) return c.json({ success: true, data: { plan, job: null } });
       if (input.confirm !== true) return c.json({ success: false, code: 'confirmation_required', error: 'Confirm the transcription request.', data: { plan } }, 400);
       if (plan.requiresCloudConsent && input.acceptCloudProvider !== true)
-        return c.json({ success: false, code: 'cloud_consent_required', error: `This sends the recording audio to ${plan.provider}, a cloud provider that may bill for it. Ask the person, then retry with acceptCloudProvider: true.`, data: { plan } }, 409);
+        return c.json({ success: false, code: 'cloud_consent_required', error: `This may send the recording audio to these cloud providers: ${plan.cloudProviders.join(', ')}. Provider charges may apply. Ask the person, then retry with acceptCloudProvider: true.`, data: { plan } }, 409);
       const { job, replayed } = await submitTranscription(database, queue, { recordingId: input.recordingId, overrides: input.options, idempotencyKey: c.req.header('Idempotency-Key') ?? input.idempotencyKey, confirmCost: input.confirmCost });
       return c.json({ success: true, data: { plan, replayed, job: describeJobs(database, [job])[0] } }, replayed ? 200 : 201);
     } catch (error) {

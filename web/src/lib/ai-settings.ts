@@ -27,6 +27,7 @@ export const aiSettingsApi = {
   get: () => request<AiSettings>('/ai-settings'),
   save: (settings: AiConfig, credentials: Record<string, string>) => request('/ai-settings', 'PUT', { ...settings, credentials }),
   check: (provider: string) => request(`/ai-settings/check/${provider}`, 'POST'),
+  customModels: (customBaseUrl?: string, apiKey?: string) => request<{ reachable: boolean; models: string[] }>('/ai-settings/check/custom', 'POST', customBaseUrl === undefined ? undefined : { customBaseUrl, ...(apiKey === undefined ? {} : { apiKey }) }),
   models: () => request<string[]>('/ai-settings/ollama-models'),
   jobs: () => request<ProcessingJob[]>('/jobs'),
   cancel: (id: string) => request(`/jobs/${id}/cancel`, 'POST'),

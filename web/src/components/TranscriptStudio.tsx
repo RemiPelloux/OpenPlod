@@ -12,7 +12,8 @@ import {
 import { exportDocument, safeDocumentName } from '@/lib/document-export'
 import { apiUrl, authenticatedHeaders } from '@/lib/runtime'
 import { providerVersionPair, versionTitle } from '@/lib/provider-versions'
-import { jobStatusLabel } from '@/lib/transcription'
+import { aiSettingsApi } from '@/lib/ai-settings'
+import { customEndpointIsLocal, jobStatusLabel } from '@/lib/transcription'
 import { formatDate, t, tn } from '@/i18n'
 import './transcript-studio.css'
 
@@ -440,7 +441,7 @@ function VersionsPanel({ recording, busy, run, onChanged }: {
 }
 
 const providerLabel = (name: string) => ({
-  whisper: t('Whisper.cpp (local)'), mistral: 'Mistral Voxtral', deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI',
+  custom: t('Custom endpoint'), whisper: t('Whisper.cpp (local)'), mistral: 'Mistral Voxtral', deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI',
 } as Record<string, string>)[name] ?? name
 
 // ---------------------------------------------------------------------------
@@ -456,18 +457,30 @@ function ProviderComparison({ recording, busy, run, onVersionAdded }: {
   const [available, setAvailable] = useState<Record<string, boolean>>({})
   const [provider, setProvider] = useState('')
   const [confirmed, setConfirmed] = useState(false)
+  const [customBaseUrl, setCustomBaseUrl] = useState('')
+  const lastEndpoint = useRef('')
+  const [discovery, setDiscovery] = useState<{ endpoint: string; models: string[] } | null>(null)
+  const [model, setModel] = useState('')
   const [loadError, setLoadError] = useState('')
   const added = useRef(onVersionAdded)
   useEffect(() => { added.current = onVersionAdded }, [onVersionAdded])
 
   const seen = useRef<ProviderComparisonRun[] | null>(null)
-  const apply = useCallback((data: { runs: ProviderComparisonRun[]; available: Record<string, boolean> }) => {
+  const apply = useCallback((data: { runs: ProviderComparisonRun[]; available: Record<string, boolean>; customBaseUrl?: string }) => {
     const previous = seen.current
     seen.current = data.runs
     // A run that just produced its version refreshes the version list.
     if (previous && data.runs.some(next => next.versionId && !previous.some(old => old.jobId === next.jobId && old.versionId))) added.current()
     setRuns(data.runs)
     setAvailable(data.available)
+    const endpoint = data.customBaseUrl ?? ''
+    if (lastEndpoint.current !== endpoint) {
+      lastEndpoint.current = endpoint
+      setCustomBaseUrl(endpoint)
+      setConfirmed(false)
+      setModel('')
+      setDiscovery(null)
+    }
   }, [])
   const load = useCallback(async () => { apply(await api.providerComparisons(recording.id)) }, [apply, recording.id])
 
@@ -487,7 +500,10 @@ function ProviderComparison({ recording, busy, run, onVersionAdded }: {
   }, [pending, load])
 
   const choices = Object.entries(available).filter(([, ok]) => ok).map(([name]) => name)
-  const local = provider === 'whisper'
+  const custom = provider === 'custom'
+  const customModels = discovery?.endpoint === customBaseUrl ? discovery.models : []
+  const customReady = Boolean(customBaseUrl && customModels.includes(model))
+  const local = provider === 'whisper' || (custom && customEndpointIsLocal(customBaseUrl))
 
   return (
     <>
@@ -508,19 +524,38 @@ function ProviderComparison({ recording, busy, run, onVersionAdded }: {
                 </select>
               </label>
             </div>
+            {custom && <div className="tstudio-row">
+              <label className="tstudio-field tstudio-field--inline"><span>{t('Model')}</span>
+                <select value={customReady ? model : ''} disabled={Boolean(busy)} onChange={event => { setModel(event.target.value); setConfirmed(false) }}>
+                  <option value="">{t('Select server model')}</option>
+                  {customModels.map(name => <option key={name}>{name}</option>)}
+                </select>
+              </label>
+              <Button size="sm" variant="outline" disabled={!customBaseUrl || Boolean(busy)}
+                onClick={() => void run('comparison-models', async () => {
+                  const endpoint = customBaseUrl
+                  setConfirmed(false); setModel('')
+                  setDiscovery({ endpoint, models: (await aiSettingsApi.customModels(endpoint)).models })
+                })}>{t('Load server models')}</Button>
+            </div>}
+            {custom && local && <p className="tstudio-hint break-all">{customBaseUrl}</p>}
             {provider && (
               <label className="tstudio-confirm">
-                <input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />
+                <input type="checkbox" checked={confirmed} disabled={custom && !customReady} onChange={event => setConfirmed(event.target.checked)} />
                 {local
-                  ? t('I understand the audio is transcribed again locally with Whisper.cpp, which can take a while.')
-                  : t('I understand the full audio is uploaded again to {provider} and this run may be billed by that provider. Cost is not estimated here.', { provider: providerLabel(provider) })}
+                  ? custom ? t('Audio will be processed on this computer.') : t('I understand the audio is transcribed again locally with Whisper.cpp, which can take a while.')
+                  : t('I understand the full audio is uploaded again to {provider} and this run may be billed by that provider. Cost is not estimated here.', { provider: custom ? customBaseUrl : providerLabel(provider) })}
               </label>
             )}
             <div className="tstudio-actions">
-              <Button size="sm" disabled={!provider || !confirmed || Boolean(busy)}
+              <Button size="sm" disabled={!provider || !confirmed || Boolean(busy) || (custom && !customReady)}
                 onClick={() => void run('provider-compare', async () => {
-                  const result = await api.startProviderComparison(recording.id, provider)
                   setConfirmed(false)
+                  const result = await api.startProviderComparison(recording.id, provider, custom ? { model, expectedCustomEndpoint: customBaseUrl } : undefined)
+                    .catch(async error => {
+                      if (custom) await load().catch(() => {})
+                      throw error
+                    })
                   await load()
                   return result.alreadyQueued
                     ? t('A {provider} comparison is already queued for this recording.', { provider: providerLabel(provider) })

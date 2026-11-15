@@ -58,7 +58,7 @@ export function WorkspaceTiles() {
         </span>
         <div>
           <strong>{t("Transcripts")}</strong>
-          <p>{engine === 'whisper' ? t('Powered by local Whisper') : engine ? t('Powered by {engine}', { engine: { mistral: 'Mistral', deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI' }[engine] }) : t('Transcription settings')}</p>
+          <p>{engine === 'whisper' ? t('Powered by local Whisper') : engine ? t('Powered by {engine}', { engine: { mistral: 'Mistral', deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI', custom: 'OpenAI-compatible' }[engine] }) : t('Transcription settings')}</p>
         </div>
         <ChevronRight className="tile-arrow" />
       </Link>

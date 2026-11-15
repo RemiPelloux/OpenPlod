@@ -117,7 +117,7 @@ test('Ollama context is read from /api/show; an oversized transcript is refused 
 test('settings expose capabilities, pricing and spend, and check Gemini and custom endpoints with the right headers', async () => {
   const db = database({ customBaseUrl: 'https://llm.example.com/v1' }, { geminiApiKey: 'g-key', customApiKey: 'c-key' });
   const seen: { url: string; headers: Record<string, string> }[] = [];
-  const api = createAiSettingsApi(db, (async (url: string, init: RequestInit) => { seen.push({ url, headers: init.headers as Record<string, string> }); return new Response('{}', { status: 200 }); }) as typeof fetch);
+  const api = createAiSettingsApi(db, (async (url: string, init: RequestInit) => { seen.push({ url, headers: init.headers as Record<string, string> }); return Response.json({ data: [{ id: 'test-model' }] }); }) as typeof fetch);
   const settings = await (await api.request('/')).json();
   expect(settings.data.pricing.pricesAsOf).toMatch(/^\d{4}-/); expect(settings.data.textCapabilities.custom).toEqual({ defaultModel: null, local: false, requiresKey: false });
   expect(settings.data.capabilities.mistral.languages['voxtral-mini-latest']).toContain('fr');
@@ -147,4 +147,19 @@ test('recording chat reads keys from shared AI settings, not a private Mistral l
   const answer = await ai.ask({ id: crypto.randomUUID(), conversationId: crypto.randomUUID(), recordingIds: [recordingId], question: 'What?', consent: true }, async () => {});
   expect(auth).toBe('Bearer shared-openai-key'); expect(answer).toMatchObject({ provider: 'openai', fallbackFrom: [] }); expect(answer.completedAt).toBeString();
   db.close();
+});
+
+
+test('switching to local-only blocks a text selection captured for a remote endpoint', async () => {
+  using db = database({ chatProvider: 'custom', chatModel: 'fixture', customBaseUrl: 'https://llm.example/v1' });
+  const selection = textSelection(db, 'chat');
+  db.query("UPDATE user_settings SET value=? WHERE key='aiConfig'").run(JSON.stringify({
+    privacyMode: 'local-only', customBaseUrl: 'http://127.0.0.1:8080/v1',
+  }));
+  let calls = 0;
+  await expect(completeText(selection, [{ role: 'user', content: 'Synthetic' }], {}, async () => {
+    calls++;
+    return openAiReply();
+  })).rejects.toThrow('Local-only mode');
+  expect(calls).toBe(0);
 });

@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
-import { aiConfigSchema, assertPrivacy, readAiConfig, readSettings, speechProviders, type AiConfig, type SpeechProvider } from '../ai/config';
-import { speechCapabilities, validateSpeechOptions } from '../ai/capabilities';
+import { aiConfigFromSettings, aiConfigSchema, assertPrivacy, assertLivePrivacy, readAiConfig, readSettings, sameCustomEndpoint, speechProviders, type AiConfig, type SpeechProvider } from '../ai/config';
+import { omitsTranscriptionHints, speechCapabilities, validateSpeechOptions } from '../ai/capabilities';
 import type { Job, JobContext, JobQueue } from '../jobs/queue';
 import { TranscriptionRouter } from '../transcription/router';
 import type { TranscriptionOptions, TranscriptionResult } from '../transcription/types';
@@ -30,7 +30,7 @@ export class ComparisonError extends Error {
 
 export const comparisonKey = (recordingId: string, provider: string) => `compare:${recordingId}:${provider}`;
 
-export interface ComparisonRequest { provider?: unknown; model?: unknown; confirm?: unknown }
+export interface ComparisonRequest { provider?: unknown; model?: unknown; expectedCustomEndpoint?: unknown; confirm?: unknown }
 
 export interface ComparisonJobData {
   recordingId: string;
@@ -70,11 +70,14 @@ export function prepareComparison(database: Database, recordingId: string, input
   }
   if (!available[engine]) throw new ComparisonError(400, `${speechCapabilities[engine].label} is not configured.`);
   const base = readAiConfig(database);
+  if (engine === 'custom' && input.expectedCustomEndpoint !== base.customBaseUrl) {
+    throw new ComparisonError(409, 'The custom endpoint changed. Review the destination and confirm again.');
+  }
   try { assertPrivacy(base, engine); } catch (error) { throw new ComparisonError(400, (error as Error).message); }
 
   const capabilities = speechCapabilities[engine];
   const model = typeof input.model === 'string' ? input.model.trim() : '';
-  if (model && !(capabilities.models as readonly string[]).includes(model)) throw new ComparisonError(400, `Unsupported ${engine} transcription model.`);
+  const ignoresContext = omitsTranscriptionHints(engine, base.transcriptionDiarize);
   // Hints the second provider cannot take are left out and recorded, never sent half-supported.
   const ignoredHints: string[] = [];
   const keep = <T>(value: T, empty: T, supported: boolean, name: string, present: boolean): T => {
@@ -84,8 +87,8 @@ export function prepareComparison(database: Database, recordingId: string, input
   const config: AiConfig = aiConfigSchema.parse({
     ...base, transcriptionEngine: engine, transcriptionModel: model, transcriptionFallback: [], transcriptionProfile: '',
     transcriptionDiarize: keep(base.transcriptionDiarize, false, capabilities.diarization, 'speaker labels', base.transcriptionDiarize),
-    transcriptionVocabulary: keep(base.transcriptionVocabulary, [], capabilities.vocabulary, 'vocabulary', base.transcriptionVocabulary.length > 0),
-    transcriptionPrompt: keep(base.transcriptionPrompt, '', capabilities.prompt, 'prompt', Boolean(base.transcriptionPrompt.trim())),
+    transcriptionVocabulary: keep(base.transcriptionVocabulary, [], capabilities.vocabulary && !ignoresContext, 'vocabulary', base.transcriptionVocabulary.length > 0),
+    transcriptionPrompt: keep(base.transcriptionPrompt, '', capabilities.prompt && !ignoresContext, 'prompt', Boolean(base.transcriptionPrompt.trim())),
   });
   try { validateSpeechOptions(engine, optionsFor(config)); } catch (error) { throw new ComparisonError(400, (error as Error).message); }
   return { recordingId, filePath: recording.filePath, config, compare: { provider: engine, ignoredHints } };
@@ -102,6 +105,12 @@ export async function queueComparison(queue: JobQueue, database: Database, recor
   const data = prepareComparison(database, recordingId, input, available);
   const key = comparisonKey(recordingId, data.compare.provider);
   const before = queue.getAllJobs().find(job => job.dedupeKey === key && ['pending', 'running'].includes(job.status));
+  if (before && data.compare.provider === 'custom') {
+    const existing = (before.data as ComparisonJobData).config;
+    if (existing.customBaseUrl !== data.config.customBaseUrl || existing.transcriptionModel !== data.config.transcriptionModel) {
+      throw new ComparisonError(409, 'A different custom comparison is already queued for this recording.');
+    }
+  }
   const job = await queue.add('process-recording', data, 0, { dedupeKey: key });
   return { job, alreadyQueued: before?.id === job.id };
 }
@@ -126,11 +135,12 @@ export type ComparisonTranscriber = (filePath: string, config: AiConfig, options
 /** The real transcriber: the chosen provider only, with no fallback. */
 export const routerTranscriber = (database: Database): ComparisonTranscriber => (filePath, config, options) => {
   const settings = readSettings(database);
+  const currentConfig = aiConfigFromSettings(settings);
   const router = new TranscriptionRouter({
     primary: config.transcriptionEngine, fallback: [],
-    localOnly: readAiConfig(database).privacyMode === 'local-only' || config.privacyMode === 'local-only',
-    beforeAttempt: provider => assertPrivacy(readAiConfig(database), provider),
-  }, { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey, openaiApiKey: settings.openaiApiKey, assemblyaiApiKey: settings.assemblyaiApiKey });
+    localOnly: currentConfig.privacyMode === 'local-only' || config.privacyMode === 'local-only',
+    beforeAttempt: provider => assertLivePrivacy(database, config.customBaseUrl, provider),
+  }, { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey, openaiApiKey: settings.openaiApiKey, assemblyaiApiKey: settings.assemblyaiApiKey, customApiKey: sameCustomEndpoint(config.customBaseUrl, currentConfig.customBaseUrl) ? settings.customApiKey : undefined, customBaseUrl: config.customBaseUrl });
   return router.transcribeFile(filePath, options);
 };
 
@@ -151,7 +161,7 @@ export async function runComparison(database: Database, raw: ComparisonJobData, 
   };
   unchanged();
   if (database.query('SELECT 1 FROM transcript_versions WHERE id = ?').get(job.id)) return;
-  assertPrivacy(readAiConfig(database), provider);
+  assertLivePrivacy(database, config.customBaseUrl, provider);
 
   const startedAt = new Date().toISOString();
   const options = optionsFor(config);

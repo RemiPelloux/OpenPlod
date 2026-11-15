@@ -13,6 +13,7 @@ import './onboarding.css'
 const steps = () => [t('Welcome'), t('Privacy'), t('Transcription'), t('Profile'), t('Recordings')]
 const SPEECH: SpeechProvider[] = ['whisper', 'mistral', 'openai', 'deepgram', 'assemblyai']
 const blurb = (): Record<SpeechProvider, string> => ({
+  custom: t('Custom OpenAI-compatible endpoint'),
   whisper: t('Runs on this computer. Needs whisper.cpp and a model file.'),
   mistral: t('Voxtral: fast, multilingual, strong in French.'),
   openai: t('Whisper and GPT-4o transcribe; accepts a context prompt.'),

@@ -244,7 +244,7 @@ export interface SearchResult {
 }
 
 export interface Settings {
-  transcriptionEngine: 'whisper' | 'mistral' | 'deepgram' | 'openai' | 'assemblyai'
+  transcriptionEngine: 'whisper' | 'mistral' | 'deepgram' | 'openai' | 'assemblyai' | 'custom'
   mistralApiKey?: string
   deepgramApiKey?: string
   mistralApiKeyConfigured?: boolean
@@ -635,7 +635,7 @@ export const api = {
     const d = res.data
     const engine = typeof d.transcriptionEngine === 'string' ? d.transcriptionEngine : ''
     return {
-      transcriptionEngine: ['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai'].includes(engine)
+      transcriptionEngine: ['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai', 'custom'].includes(engine)
         ? engine as Settings['transcriptionEngine']
         : 'whisper',
       mistralApiKey: typeof d.mistralApiKey === 'string' ? d.mistralApiKey : '',
@@ -823,15 +823,15 @@ export const api = {
   transcriptPdf: (id: string, versionId?: string | null): Promise<string> =>
     api.exportText(`${id}/transcript/pdf${versionId ? `?versionId=${encodeURIComponent(versionId)}` : ''}`),
 
-  providerComparisons: async (id: string): Promise<{ runs: ProviderComparisonRun[]; available: Record<string, boolean> }> => {
-    const res = await fetchJSON<ApiEnvelope<{ runs: ProviderComparisonRun[]; available: Record<string, boolean> }>>(
+  providerComparisons: async (id: string): Promise<{ runs: ProviderComparisonRun[]; available: Record<string, boolean>; customBaseUrl?: string }> => {
+    const res = await fetchJSON<ApiEnvelope<{ runs: ProviderComparisonRun[]; available: Record<string, boolean>; customBaseUrl?: string }>>(
       `/recordings/${id}/transcript/provider-comparisons`, { signal: AbortSignal.timeout(20000) })
     return res.data
   },
 
-  startProviderComparison: async (id: string, provider: string): Promise<{ jobId: string; alreadyQueued: boolean }> => {
+  startProviderComparison: async (id: string, provider: string, custom?: { model: string; expectedCustomEndpoint: string }): Promise<{ jobId: string; alreadyQueued: boolean }> => {
     const res = await fetchJSON<ApiEnvelope<{ jobId: string; alreadyQueued: boolean }>>(`/recordings/${id}/transcript/provider-comparisons`, {
-      method: 'POST', body: JSON.stringify({ provider, confirm: true }), signal: AbortSignal.timeout(20000),
+      method: 'POST', body: JSON.stringify({ provider, confirm: true, ...custom }), signal: AbortSignal.timeout(20000),
     })
     return res.data
   },
