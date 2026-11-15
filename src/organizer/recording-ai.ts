@@ -129,12 +129,19 @@ export class RecordingAi {
   /** Saved conversations, newest activity first. Archived ones are listed only when asked for. */
   conversations(input: unknown = {}): AiConversationSummary[] {
     const archived = conversationListSchema.parse(input).archived === 'true';
-    // SQLite returns the bare columns from the row holding max(created_at): the latest question.
-    const rows = this.store.database.query(`SELECT a.conversation_id AS id, a.question, a.recording_ids AS ids, max(a.created_at) AS createdAt, count(*) AS turns,
+    // Match history's insertion order when two turns share a timestamp.
+    const rows = this.store.database.query(`WITH ranked_turns AS (
+        SELECT conversation_id, question, recording_ids, created_at, rowid AS turn_rowid,
+          ROW_NUMBER() OVER (PARTITION BY conversation_id ORDER BY created_at DESC, rowid DESC) AS rank,
+          COUNT(*) OVER (PARTITION BY conversation_id) AS turns
+        FROM ai_turns WHERE state='ready'
+      )
+      SELECT a.conversation_id AS id, a.question, a.recording_ids AS ids, a.created_at AS createdAt, a.turns,
         c.title, c.archived_at AS archivedAt, c.pinned_recording_ids AS pinned, c.context_note AS note,
         (SELECT json_group_array(s.value) FROM ai_turns b, json_each(CASE WHEN json_valid(COALESCE(b.source_ids, b.recording_ids)) AND json_type(COALESCE(b.source_ids, b.recording_ids))='array' THEN COALESCE(b.source_ids, b.recording_ids) ELSE '[]' END) s WHERE b.conversation_id=a.conversation_id AND b.state='ready') AS sent
-      FROM ai_turns a LEFT JOIN ai_conversations c ON c.id=a.conversation_id WHERE a.state='ready'
-      GROUP BY a.conversation_id HAVING (c.archived_at IS NOT NULL)=? ORDER BY createdAt DESC LIMIT 200`).all(archived ? 1 : 0) as
+      FROM ranked_turns a LEFT JOIN ai_conversations c ON c.id=a.conversation_id
+      WHERE a.rank=1 AND (c.archived_at IS NOT NULL)=?
+      ORDER BY a.created_at DESC, a.turn_rowid DESC LIMIT 200`).all(archived ? 1 : 0) as
       { id: string; question: string; ids: string; createdAt: string; turns: number; title: string | null; archivedAt: string | null; pinned: string | null; note: string | null; sent: string | null }[];
     const list = (text: string | null) => { try { const value = JSON.parse(text ?? '[]'); return Array.isArray(value) && value.every(item => typeof item === 'string') ? value as string[] : null; } catch { return null; } };
     const parsed = rows.map(row => ({ row, ids: list(row.ids), sent: list(row.sent) }));

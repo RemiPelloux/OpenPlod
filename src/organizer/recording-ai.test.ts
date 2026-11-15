@@ -89,6 +89,8 @@ test('conversations can be renamed, archived, restored by a follow-up, and expor
   expect(json).toMatchObject({ id: request.conversationId, title: 'Audio retention', archived: true, turns: [{ question: 'What was decided?' }] });
 
   await ai.ask({ ...request, id: crypto.randomUUID(), question: 'And next?' }, async () => {});
+  // Two fast turns can have the same millisecond timestamp.
+  db.query('UPDATE ai_turns SET created_at=? WHERE conversation_id=?').run('2026-09-07T12:00:00.000Z', request.conversationId);
   expect(ai.conversations()).toMatchObject([{ id: request.conversationId, title: 'Audio retention', question: 'And next?', turns: 2, archived: false }]);
   expect(ai.updateConversation(request.conversationId, { title: null }).title).toBeNull();
 
