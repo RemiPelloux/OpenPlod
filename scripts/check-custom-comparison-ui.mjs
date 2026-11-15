@@ -4,7 +4,7 @@ import { chromium } from 'playwright-core';
 
 const origin = 'http://openplod-fixture.invalid';
 const recording = { id: 'synthetic', originalFilename: 'Synthetic.wav', status: 'complete', retentionState: 'active',
-  transcript: { fullText: 'Synthetic dialogue', segments: [{ start: 0, end: 1, text: 'Synthetic dialogue' }] } };
+  transcript: { currentVersionId: 'synthetic-version', fullText: 'Synthetic dialogue', segments: [{ start: 0, end: 1, text: 'Synthetic dialogue' }] } };
 const browser = await chromium.launch();
 try {
   for (const [width, theme] of [[1440, 'dark'], [390, 'light'], [320, 'dark']]) {
@@ -14,7 +14,7 @@ try {
     const errors = [], posts = [], lookups = [];
     page.on('pageerror', error => errors.push(error.message));
     const remote = 'https://speech.example/v1', local = 'http://127.0.0.1:8000/v1';
-    let endpoint = remote;
+    let endpoint = remote, queued = false, comparisonReads = 0;
     await page.route('**/*', async route => {
       const req = route.request(), url = new URL(req.url());
       if (url.origin !== origin) return route.abort();
@@ -29,13 +29,25 @@ try {
       else if (path === '/api/recordings') data = [recording];
       else if (path === '/api/onboarding') data = { completedAt: '2026-01-01', skipped: true };
       else if (path === '/api/settings') data = {};
-      else if (path.endsWith('/transcript/versions')) data = [{ id: 'synthetic-version', origin: 'transcription', createdAt: '2026-01-01' }];
+      else if (path.endsWith('/transcript/versions')) {
+        data = [{ id: 'synthetic-version', origin: 'transcription', createdAt: '2026-01-01' }];
+        if (comparisonReads > 1) data.unshift({ id: 'synthetic-job', origin: 'generated', createdAt: '2026-01-02',
+          provenance: { provider: 'custom', model: 'local-model' } });
+      }
       else if (path.endsWith('/transcript/provider-comparisons')) {
         if (req.method() === 'POST') {
           const input = req.postDataJSON(); posts.push(input);
           if (input.expectedCustomEndpoint !== endpoint) return route.fulfill({ status: 409, json: { success: false, error: 'The custom endpoint changed. Review the destination and confirm again.' } });
+          queued = true;
           data = { jobId: 'synthetic-job', alreadyQueued: false };
-        } else data = { runs: [], available: { whisper: true, custom: true }, customBaseUrl: endpoint };
+        } else {
+          const runs = !queued ? [] : [{
+            jobId: 'synthetic-job', provider: 'custom', createdAt: '2026-01-02',
+            status: ++comparisonReads === 1 ? 'pending' : 'complete',
+            versionId: comparisonReads > 1 ? 'synthetic-job' : null,
+          }];
+          data = { runs, available: { whisper: true, custom: true }, customBaseUrl: endpoint };
+        }
       } else if (path === '/api/ai-settings/check/custom') {
         const body = req.postDataJSON(); lookups.push(body);
         data = { models: body.customBaseUrl === remote ? ['remote-model'] : ['local-model'] };
@@ -71,6 +83,11 @@ try {
     assert(await studio.getByText(local, { exact: true }).isVisible());
     await run.click();
     await studio.getByText('Queued. The Custom endpoint version appears in the list above when it finishes.').waitFor();
+    await studio.getByText('Version saved', { exact: true }).waitFor();
+    await studio.locator('.tstudio-versions strong').filter({ hasText: 'local-model' }).waitFor();
+    const current = studio.getByText('Current', { exact: true });
+    assert.equal(await current.count(), 1);
+    assert(!(await current.locator('..').innerText()).includes('local-model'));
     assert.deepEqual(lookups, [{ customBaseUrl: remote }, { customBaseUrl: local }]);
     assert.deepEqual(posts, [
       { provider: 'custom', confirm: true, model: 'remote-model', expectedCustomEndpoint: remote },
@@ -78,7 +95,7 @@ try {
     ]);
     assert(await studio.evaluate(el => el.scrollWidth <= el.clientWidth + 2), `Studio overflows at ${width}px`);
     assert.deepEqual(errors, []);
-    console.log(`PASS comparison ${width}px ${theme}: selection, consent, stale destination, recovery, isolated queue`);
+    console.log(`PASS comparison ${width}px ${theme}: selection, consent, stale destination, recovery, isolated queue, saved independent version`);
     await page.close();
   }
 } finally { await browser.close(); }

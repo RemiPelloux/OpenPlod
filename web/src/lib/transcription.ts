@@ -56,7 +56,7 @@ export function configOf(settings: AiSettings): AiConfig {
 export function languagesFor(settings: Pick<AiSettings, 'capabilities'>, engine: SpeechProvider, model?: string | null): [string, string][] {
   const capability = settings.capabilities[engine]
   const documented = (capability.languages as Record<string, readonly string[] | null>)[model || capability.models[0]] ?? null
-  return localizeLanguages(documented ? LANGUAGES.filter(([code]) => code === 'auto' || documented.includes(code.split('-')[0])) : LANGUAGES)
+  return localizeLanguages(Array.isArray(documented) ? LANGUAGES.filter(([code]) => code === 'auto' || documented.includes(code.split('-')[0])) : LANGUAGES)
 }
 
 /** Mirrors the server rule: a custom endpoint stays on this computer only on loopback. */

@@ -3,6 +3,7 @@ import { configOf, customEndpointIsLocal, describeEstimate, formatUsd, languages
 import type { AiSettings } from './ai-settings'
 
 const capabilities = {
+  custom: { models: [], languages: {} },
   mistral: { models: ['voxtral-mini-latest'], languages: { 'voxtral-mini-latest': ['en', 'fr', 'de', 'es', 'it', 'pt', 'nl', 'hi'] } },
   deepgram: { models: ['nova-2', 'nova-3'], languages: { 'nova-2': null, 'nova-3': null } },
 } as unknown as AiSettings['capabilities']
@@ -26,4 +27,12 @@ test('saving strips every read-only settings field, and only loopback endpoints 
   expect(customEndpointIsLocal('http://127.0.0.1:8080/v1')).toBe(true)
   expect(customEndpointIsLocal('https://llm.example.com/v1')).toBe(false)
   expect(customEndpointIsLocal('not a url')).toBe(false)
+})
+
+
+test('custom model names matching object properties do not break the language picker', () => {
+  const expected = languagesFor({ capabilities }, 'custom', 'other-model')
+  for (const model of ['constructor', 'toString', '__proto__']) {
+    expect(languagesFor({ capabilities }, 'custom', model)).toEqual(expected)
+  }
 })

@@ -36,13 +36,16 @@ export const speechCapabilities = {
 
 /** The model a provider runs when none is chosen. */
 export const defaultSpeechModel = (provider: SpeechProvider) => speechCapabilities[provider].models[0];
+function documentedValue<T>(table: Record<string, T>, model: string | undefined): T | undefined {
+  return model && Object.prototype.hasOwnProperty.call(table, model) ? table[model] : undefined;
+}
 /** Documented languages for a model, or null when unknown. */
 export function speechLanguages(provider: SpeechProvider, model?: string | null): readonly string[] | null {
-  return (speechCapabilities[provider].languages as Record<string, readonly string[] | null>)[model || defaultSpeechModel(provider)] ?? null;
+  return documentedValue<readonly string[] | null>(speechCapabilities[provider].languages, model || defaultSpeechModel(provider)) ?? null;
 }
 export function timestampGranularity(provider: SpeechProvider, model?: string | null, diarize = false): TimestampGranularity {
   if (provider === 'assemblyai' && !diarize) return 'none';
-  return (speechCapabilities[provider].timestampGranularity as Record<string, TimestampGranularity>)[model || defaultSpeechModel(provider)] ?? 'none';
+  return documentedValue<TimestampGranularity>(speechCapabilities[provider].timestampGranularity, model || defaultSpeechModel(provider)) ?? 'none';
 }
 
 export function validateSpeechOptions(provider: SpeechProvider, options: { model?: string; diarize?: boolean; vocabulary?: string[]; prompt?: string; language?: string }): void {
