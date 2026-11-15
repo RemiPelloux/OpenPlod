@@ -1,3 +1,4 @@
+import type { PlaudImportProgress } from '../sync/plaud-progress';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getConnInfo } from 'hono/bun';
@@ -23,10 +24,14 @@ import {
   writeStoredCloudToken, type PlaudCloudRecording,
 } from '../sync/plaud-cloud';
 import {
-  DEFAULT_PLAUD_DOMAIN, PLAUD_DOMAINS, PlaudIdentityProvisioner, clearStoredIdentity, deviceTypeForSerial,
-  identityFilePath, isPlaudDomain, provisionWithDeveloperCredentials, readStoredIdentity, writeStoredIdentity,
+  DEFAULT_PLAUD_DOMAIN, PLAUD_DOMAINS, clearStoredIdentity, deviceTypeForSerial,
+  identityFilePath, isPlaudDomain, readStoredIdentity, writeStoredIdentity,
   type ProvisionedIdentity,
 } from '../sync/plaud-provision';
+import { provisionPlaudAccount } from '../sync/plaud-personal-provision';
+import { PlaudAuthorizationOperation } from '../sync/plaud-authorization-operation';
+
+const authorizationOperation = new PlaudAuthorizationOperation();
 
 const app = new Hono();
 app.use('*', bodyLimit({ maxSize: 16384 }));
@@ -60,7 +65,7 @@ app.post('/authorizations/:id/approve', async c => {
 });
 app.post('/authorizations/:id/acknowledge', c => c.json({ success: true, data: enrollment.remove(c.req.param('id')) }));
 app.delete('/authorizations/:id', c => localOwner(c) ? c.json({ success: true, data: enrollment.remove(c.req.param('id')) }) : c.json({ success: false, error: 'Use the desktop to decline authorization.' }, 403));
-let importJob: { id: string; state: 'running' | 'complete' | 'failed'; result?: Awaited<ReturnType<typeof importDirectPlaudRecording>>; error?: string } | null = null;
+let importJob: { id: string; state: 'running' | 'complete' | 'failed'; progress?: PlaudImportProgress; result?: Awaited<ReturnType<typeof importDirectPlaudRecording>>; error?: string } | null = null;
 
 app.get('/device-recordings', async c => {
   c.header('Cache-Control', 'no-store');
@@ -85,7 +90,7 @@ app.post('/device-import', async c => {
   if (importJob?.state === 'running') return c.json({ success: false, error: 'A Plaud import is already running' }, 409);
   const job: NonNullable<typeof importJob> = { id: crypto.randomUUID(), state: 'running' };
   importJob = job;
-  void importDirectPlaudRecording(body.sessionId!).then(result => { job.result = result; job.state = 'complete'; })
+  void importDirectPlaudRecording(body.sessionId!, progress => { job.progress = progress; }).then(result => { job.result = result; job.state = 'complete'; })
     .catch(error => { job.error = error instanceof Error ? error.message : 'Plaud import failed'; job.state = 'failed'; });
   return c.json({ success: true, data: { id: job.id } }, 202);
 });
@@ -398,13 +403,16 @@ app.get('/identity', async c => {
   }});
 });
 
-// Mint a device identity for this recorder. Either paste a Plaud sign-in token,
-// or leave it out to use Plaud developer credentials when they are configured.
+// Personal accounts use pld_ut and consumer endpoints; partner access is explicit.
 app.post('/identity', async c => {
-  let body: { token?: string; domain?: string; serial?: string; identifier?: string };
+  const generation = authorizationOperation.generation;
+  let body: { token?: string; accountType?: string; domain?: string; serial?: string; identifier?: string; operationId?: string };
   try { body = await c.req.json(); }
   catch { return c.json({ success: false, error: 'Invalid authorization request.' }, 400); }
   try {
+    const operationId = typeof body?.operationId === 'string' ? body.operationId : crypto.randomUUID();
+    if (!/^[\w-]{1,64}$/.test(operationId)) throw new Error('Invalid authorization operation.');
+    return await authorizationOperation.run(operationId, async signal => {
     const givenSerial = typeof body.serial === 'string' && /^[0-9A-F]{16}$/.test(body.serial) ? body.serial : null;
     const givenIdentifier = typeof body.identifier === 'string' && isBluetoothIdentifier(body.identifier) ? body.identifier : null;
     // The serial and Bluetooth address come from the recorder's advertisement, so
@@ -415,17 +423,34 @@ app.post('/identity', async c => {
     if (!serial) throw new Error('Scan the recorder first so its serial number can be read.');
     if (!identifier) throw new Error('Scan the recorder first so its Bluetooth address can be read.');
     const domain = typeof body.domain === 'string' && isPlaudDomain(body.domain) ? body.domain : DEFAULT_PLAUD_DOMAIN;
-    const identity: ProvisionedIdentity = body.token?.trim()
-      ? await new PlaudIdentityProvisioner().provision({ token: body.token, serial, identifier, domain })
-      : await provisionWithDeveloperCredentials({ serial, identifier, domain });
-    await writeStoredIdentity(identity);
+    const identity: ProvisionedIdentity = await provisionPlaudAccount({
+      token: body.token, accountType: body.accountType, serial, identifier, domain, signal,
+    });
+    await writeStoredIdentity(identity, signal);
     return c.json({ success: true, data: {
       authorized: true, serial: identity.serial, identifier: identity.identifier, deviceType: identity.deviceType,
     }});
+    }, generation);
   } catch (error) { return c.json({ success: false, error: authorizationError(error) }, 400); }
 });
 
-app.delete('/identity', async c => c.json({ success: true, data: { removed: await clearStoredIdentity() } }));
+app.post('/identity/cancel', async c => {
+  const body = await c.req.json().catch(() => null);
+  if (typeof body?.operationId !== 'string' || !/^[\w-]{1,64}$/.test(body.operationId)) {
+    return c.json({ success: false, error: 'Invalid authorization operation.' }, 400);
+  }
+  await authorizationOperation.cancel(body.operationId);
+  return c.json({ success: true });
+});
+
+app.delete('/identity', async c => {
+  await authorizationOperation.cancel();
+  cancelDirectPlaud();
+  try {
+    return await authorizationOperation.run(crypto.randomUUID(), async () =>
+      c.json({ success: true, data: { removed: await clearStoredIdentity() } }));
+  } catch (error) { return c.json({ success: false, error: authorizationError(error) }, 409); }
+});
 
 // ---------------------------------------------------------------------------
 // Host autodetection

@@ -1,3 +1,4 @@
+import { freemem } from 'node:os';
 import { buildDownloadRequest, buildHandshake, buildSessionRequest, parseSessionPage, type PlaudSessionEntry } from './plaud-protocol';
 
 export interface PlaudPackets {
@@ -26,15 +27,24 @@ export class PlaudSessionPages {
   }
 }
 
+// The decoder and resume path still use whole-file buffers. Reserve headroom for
+// those buffers instead of imposing a small recording-size limit.
+export function checkPlaudDownloadSize(size: number, availableMemory = freemem()) {
+  if (!Number.isSafeInteger(size) || size <= 0 || size > 0xffffffff) {
+    throw new Error('Invalid Plaud recording size');
+  }
+  if (size * 6 + 256 * 1024 * 1024 > availableMemory) {
+    throw new Error(`Not enough available memory to import this ${Math.ceil(size / 1048576)} MiB recording. Close other applications and retry; the original stays on the Plaud.`);
+  }
+}
+
 export class PlaudDownload {
   private bytes: Buffer;
   private offset = 0;
   private head = false;
   private completed = false;
   constructor(readonly session: PlaudSessionEntry, prefix: Uint8Array = new Uint8Array()) {
-    if (!Number.isSafeInteger(session.size) || session.size <= 0 || session.size > 64 * 1024 * 1024) {
-      throw new Error('Recording exceeds the current 64 MiB Bluetooth transfer limit');
-    }
+    checkPlaudDownloadSize(session.size);
     this.bytes = Buffer.alloc(session.size);
     if (prefix.length >= session.size) throw new Error('Resume prefix must leave a nonempty download range');
     this.bytes.set(prefix); this.offset = prefix.length;
@@ -115,12 +125,14 @@ export async function downloadPlaudSession(connection: PlaudPackets, session: Pl
   options: { prefix?: Uint8Array; checkpoint?: (bytes: Buffer) => Promise<void> } = {}) {
   const download = new PlaudDownload(session, options.prefix);
   await connection.write(buildDownloadRequest({ sessionId: session.sessionId, offset: options.prefix?.length ?? 0, end: session.size }));
-  const deadline = Date.now() + 15 * 60000;
+  let deadline = Date.now() + 15000;
   let checkpointed = options.prefix?.length ?? 0;
   try {
   while (Date.now() < deadline) {
-    const result = download.add(await connection.packet(Math.min(15000, deadline - Date.now())));
-    if (download.downloaded.length - checkpointed >= 65536) { await options.checkpoint?.(download.downloaded); checkpointed = download.downloaded.length; }
+    const before = download.downloaded.length;
+    const result = download.add(await connection.packet(Math.max(1, deadline - Date.now())));
+    if (download.downloaded.length > before) deadline = Date.now() + 15000;
+    if (download.downloaded.length - checkpointed >= 65536) { await options.checkpoint?.(download.downloaded); checkpointed = download.downloaded.length; deadline = Date.now() + 15000; }
     if (result) return result;
   }
   throw new Error('Recording download timed out; partial audio was not imported');

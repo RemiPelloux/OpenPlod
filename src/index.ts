@@ -342,5 +342,12 @@ export default {
   ...tls,
   // Bluetooth discovery can take up to 35 seconds before returning a result.
   idleTimeout: 60,
-  fetch: app.fetch,
+  fetch(request: Request, server: import('bun').Server<unknown>) {
+    // Provisioning can spend 45s scanning plus four 20s regional HTTP attempts.
+    // Keep the ordinary idle limit; only this route needs a longer server budget.
+    if (['POST', 'DELETE'].includes(request.method) && ['/api/plaud/identity', '/api/plaud/identity/cancel'].includes(new URL(request.url).pathname)) {
+      server.timeout(request, 180);
+    }
+    return app.fetch(request, server);
+  },
 };

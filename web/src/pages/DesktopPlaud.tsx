@@ -1,3 +1,5 @@
+import { PlaudImportProgress } from '@/components/PlaudImportProgress'
+import type { PlaudImportProgress as ImportProgress } from '@/lib/api'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AudioLines, Bluetooth, Check, CheckCircle2, Clock3, Download, FileAudio, FolderOpen, HardDrive, Loader2, Radio, RefreshCw, ShieldCheck, X } from "@/components/icons"
@@ -22,6 +24,7 @@ export function DesktopPlaud() {
   const [sessions, setSessions] = useState<DeviceRecording[] | null>(null)
   const [selected, setSelected] = useState<number[]>([])
   const [confirmation, setConfirmation] = useState<DeviceRecording[] | null>(null)
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
   const [downloading, setDownloading] = useState<number | null>(null)
   const [checkedAt, setCheckedAt] = useState<Date | null>(null)
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -69,8 +72,8 @@ export function DesktopPlaud() {
     let saved = 0
     try {
       for (const session of items) {
-        controller.signal.throwIfAborted(); setDownloading(session.sessionId)
-        const id = await api.importDeviceRecording(session.sessionId, controller.signal)
+        controller.signal.throwIfAborted(); setDownloading(session.sessionId); setImportProgress(null)
+        const id = await api.importDeviceRecording(session.sessionId, controller.signal, progress => { if (mounted.current && !controller.signal.aborted) setImportProgress(progress) })
         if (controller.signal.aborted) return
         saved++
         setSessions(current => current?.map(item => item.sessionId === session.sessionId ? { ...item, recordingId: id, retentionState: 'active' } : item) ?? null)
@@ -134,7 +137,7 @@ export function DesktopPlaud() {
               {session.recordingId ? <Button asChild variant="ghost" size="icon"><Link title={t('Open recording')} aria-label={t('Open recording {id}', { id: session.sessionId })} to={`/recording/${session.recordingId}`}><FolderOpen /></Link></Button> : <IconButton label={t('Import recording {id}', { id: session.sessionId })} disabled={busy} onClick={() => setConfirmation([session])}>{downloading === session.sessionId ? <Loader2 className="animate-spin" /> : <Download />}</IconButton>}
             </div>)}</div>
           </>}
-        {phase === 'downloading' && <div className="plaud-import-progress" role="status"><Loader2 className="animate-spin" /><span>{t('Importing session {id}', { id: downloading ?? '' })}</span><Button variant="ghost" size="sm" onClick={() => void cancel()}><X />{t('Cancel')}</Button></div>}
+        {phase === 'downloading' && <div className="plaud-import-progress" role="status"><PlaudImportProgress progress={importProgress} sessionId={downloading} /><Button variant="ghost" size="sm" onClick={() => void cancel()}><X />{t('Cancel')}</Button></div>}
       </section>
       <div className="plaud-vault-column">
         <section className="plaud-vault-summary" aria-label={t('Saved recordings')}><header className="plaud-section-heading"><span className="plaud-section-icon"><HardDrive /></span><div><h2>{t('Saved recordings')}</h2><p>{t('Stored in your desktop vault')}</p></div><IconButton asChild label={t('Open saved recordings')}><Link to="/recordings"><FolderOpen /></Link></IconButton></header>

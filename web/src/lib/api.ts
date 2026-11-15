@@ -1,3 +1,6 @@
+import { plaudErrorMessage } from './plaud-errors'
+import type { PlaudImportProgress } from '../../../src/sync/plaud-progress'
+export type { PlaudImportProgress } from '../../../src/sync/plaud-progress'
 import { t } from '@/i18n'
 export interface Recording {
   id: string
@@ -508,7 +511,7 @@ async function fetchJSON<T>(url: string, opts?: RequestInit): Promise<T> {
   if (!(opts?.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   const res = await fetch(apiUrl(url), { ...opts, headers })
   const payload = await res.json().catch(() => null) as { error?: string } | null
-  if (!res.ok) throw new Error(payload?.error || `API error: ${res.status}`)
+  if (!res.ok) throw new Error(url.startsWith('/plaud/') ? plaudErrorMessage(payload?.error || `API error: ${res.status}`) : payload?.error || `API error: ${res.status}`)
   return payload as T
 }
 
@@ -859,19 +862,18 @@ export const api = {
     const res = await fetchJSON<ApiEnvelope<DeviceRecording[]>>('/plaud/device-recordings', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(150000)]) : AbortSignal.timeout(150000) })
     return res.data
   },
-  importDeviceRecording: async (sessionId: number, signal?: AbortSignal): Promise<string> => {
+  importDeviceRecording: async (sessionId: number, signal?: AbortSignal, onProgress?: (progress: PlaudImportProgress) => void): Promise<string> => {
     const start = await fetchJSON<ApiEnvelope<{ id: string }>>('/plaud/device-import', {
       method: 'POST', body: JSON.stringify({ sessionId, confirm: true }), signal,
     })
-    const deadline = Date.now() + 480000
-    while (Date.now() < deadline) {
+    while (true) {
       signal?.throwIfAborted()
-      const job = await fetchJSON<ApiEnvelope<{ state: string; error?: string; result?: { recording: { id: string } } }>>(`/plaud/device-import/${start.data.id}`, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000) })
-      if (job.data.state === 'failed') throw new Error(job.data.error || 'Plaud import failed')
+      const job = await fetchJSON<ApiEnvelope<{ state: string; error?: string; progress?: PlaudImportProgress; result?: { recording: { id: string } } }>>(`/plaud/device-import/${start.data.id}`, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000) })
+      if (job.data.progress) onProgress?.(job.data.progress)
+      if (job.data.state === 'failed') throw new Error(plaudErrorMessage(job.data.error || 'Plaud import failed'))
       if (job.data.state === 'complete' && job.data.result) return job.data.result.recording.id
       await new Promise(resolve => window.setTimeout(resolve, 1000))
     }
-    throw new Error('Import status timed out. Check the library before retrying.')
   },
   cancelDeviceOperation: () => fetchJSON('/plaud/device-cancel', { method: 'POST', signal: AbortSignal.timeout(10000) }),
 
@@ -881,16 +883,21 @@ export const api = {
   },
 
   // Authorizing may trigger a Bluetooth scan to discover the serial and address.
-  authorizePlaudDevice: async (input: { token?: string; domain?: string; serial?: string; identifier?: string }, signal?: AbortSignal): Promise<{ authorized: boolean; serial: string; identifier: string; deviceType: string }> => {
+  authorizePlaudDevice: async (input: { token?: string; accountType?: 'personal' | 'partner'; domain?: string; serial?: string; identifier?: string; operationId?: string }, signal?: AbortSignal): Promise<{ authorized: boolean; serial: string; identifier: string; deviceType: string }> => {
     const res = await fetchJSON<ApiEnvelope<{ authorized: boolean; serial: string; identifier: string; deviceType: string }>>('/plaud/identity', {
       method: 'POST', body: JSON.stringify(input),
-      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(90000)]) : AbortSignal.timeout(90000),
+      // 45s scan + up to four 20s regional API attempts, plus 25s margin.
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(150000)]) : AbortSignal.timeout(150000),
     })
     return res.data
   },
 
+  cancelPlaudAuthorization: (operationId: string) => fetchJSON('/plaud/identity/cancel', {
+    method: 'POST', body: JSON.stringify({ operationId }), signal: AbortSignal.timeout(150000),
+  }),
+
   clearPlaudIdentity: async (): Promise<{ removed: boolean }> => {
-    const res = await fetchJSON<ApiEnvelope<{ removed: boolean }>>('/plaud/identity', { method: 'DELETE', signal: AbortSignal.timeout(20000) })
+    const res = await fetchJSON<ApiEnvelope<{ removed: boolean }>>('/plaud/identity', { method: 'DELETE', signal: AbortSignal.timeout(150000) })
     return res.data
   },
 

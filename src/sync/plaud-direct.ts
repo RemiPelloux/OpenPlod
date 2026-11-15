@@ -1,10 +1,12 @@
+import { bytePercent, ffmpegProgress, type PlaudImportProgress } from './plaud-progress';
+import { runPlaudAudioTool } from './plaud-audio-tool';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rename, stat, unlink, writeFile, rmdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { PlaudConnection, type PlaudIdentity } from './plaud-connection';
 import { PlaudTransport } from './plaud-transport';
 import { decodePlaudAudio } from './plaud-audio';
-import { downloadPlaudSession, listPlaudSessions, recordingHandshake } from './plaud-transfer';
+import { checkPlaudDownloadSize, downloadPlaudSession, listPlaudSessions, recordingHandshake } from './plaud-transfer';
 import { fingerprintFile, importRecordingFile } from '../library/recording-library';
 import { openPlaudCheckpoint } from './plaud-checkpoint';
 import { evaluateTailChecksum, TransferChecksumMismatch } from './transfer-checksum';
@@ -69,17 +71,10 @@ export async function readDirectPlaudRecordings() {
     sessions: await listPlaudSessions(connection), checkedAt: new Date().toISOString() }));
 }
 
-async function runAudioTool(command: string[]) {
-  const child = Bun.spawn(command, { stdout: 'pipe', stderr: 'ignore' });
-  const timer = setTimeout(() => child.kill(), 45000);
-  try {
-    const output = await new Response(child.stdout).text();
-    if (await child.exited !== 0) throw new Error('Local audio verification or conversion failed');
-    return output;
-  } finally { clearTimeout(timer); }
-}
-
-export async function importDirectPlaudRecording(sessionId: number) {
+export async function importDirectPlaudRecording(sessionId: number, onProgress?: (progress: PlaudImportProgress) => void) {
+  let progress: PlaudImportProgress = { stage: 'connecting', percent: null, receivedBytes: 0, totalBytes: 0, resumedBytes: 0 };
+  const report = (update: Partial<PlaudImportProgress>) => { progress = { ...progress, ...update }; onProgress?.(progress); };
+  report({});
   if (!Number.isSafeInteger(sessionId) || sessionId < 0 || sessionId > 0xffffffff) throw new Error('Invalid Plaud session ID');
   return withDevice(async (connection, identity, signal) => {
     const sessions = await listPlaudSessions(connection);
@@ -87,14 +82,21 @@ export async function importDirectPlaudRecording(sessionId: number) {
     if (!selected) throw new Error('Recording is no longer available on the Plaud');
     const resumeDirectory = join(vaultRoot(), 'incoming', 'plaud-resume');
     await mkdir(resumeDirectory, { recursive: true, mode: 0o700 });
+    checkPlaudDownloadSize(selected.size);
+    await ensureDiskSpace(resumeDirectory, selected.size * 8);
     const resumePath = join(resumeDirectory, `${identity.serial}-${sessionId}-${selected.size}.part`);
     const previous = await readFile(resumePath).catch(() => Buffer.alloc(0));
     const prefix = previous.subarray(0, Math.min(previous.length, selected.size - 1));
+    report({ stage: 'downloading', percent: bytePercent(prefix.length, selected.size), receivedBytes: prefix.length, totalBytes: selected.size, resumedBytes: previous.length });
     const checkpoint = await openPlaudCheckpoint(resumePath, prefix.length);
-    const downloaded = await downloadPlaudSession(connection, selected, { prefix, checkpoint: bytes => checkpoint.save(bytes) })
+    const downloaded = await downloadPlaudSession(connection, selected, { prefix, checkpoint: async bytes => {
+      await checkpoint.save(bytes);
+      report({ receivedBytes: bytes.length, percent: bytePercent(bytes.length, selected.size) });
+    } })
       .finally(() => checkpoint.close());
     // REL-02: the tail algorithm is unconfirmed, so this records evidence and only a confirmed
     // algorithm can reject. A rejected transfer keeps its bytes in quarantine for inspection.
+    report({ stage: 'verifying', percent: null });
     const tailChecksum = evaluateTailChecksum(downloaded.bytes, downloaded.tailCrc);
     if (tailChecksum.status === 'mismatch') {
       const quarantine = join(vaultRoot(), 'incoming', 'plaud-quarantine');
@@ -103,10 +105,12 @@ export async function importDirectPlaudRecording(sessionId: number) {
       await fsyncDirectory(quarantine);
       throw new TransferChecksumMismatch(tailChecksum);
     }
+    report({ stage: 'decrypting', percent: null });
     const decoded = await decodePlaudAudio(downloaded.bytes, async ciphertext => {
       const reply = await connection.transport.request('rsa-decrypt', { key: identity.privateKey, data: ciphertext.toString('base64') });
       return Buffer.from(reply.data ?? '', 'base64');
     });
+    report({ stage: 'verifying', percent: null });
     const retained = await listPlaudSessions(connection);
     if (!retained.some(session => session.sessionId === selected.sessionId && session.size === selected.size)) throw new Error('Source retention could not be confirmed');
     await mkdir(join(vaultRoot(), 'incoming'), { recursive: true, mode: 0o700 });
@@ -117,8 +121,12 @@ export async function importDirectPlaudRecording(sessionId: number) {
     try {
       await writeFile(encryptedPath, downloaded.bytes, { mode: 0o600 });
       await writeFile(oggPath, decoded.audio, { mode: 0o600 });
-      await runAudioTool(['ffmpeg', '-v', 'error', '-xerror', '-n', '-i', oggPath, '-map', '0:a:0', '-c:a', 'aac', '-b:a', '128k', playbackPath]);
-      const probe = JSON.parse(await runAudioTool(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', playbackPath]));
+      const sourceProbe = JSON.parse(await runPlaudAudioTool(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', oggPath], { signal }));
+      const sourceDuration = Number(sourceProbe.format?.duration);
+      report({ stage: 'converting', percent: Number.isFinite(sourceDuration) && sourceDuration > 0 ? 0 : null });
+      await runPlaudAudioTool(['ffmpeg', '-progress', 'pipe:1', '-nostats', '-v', 'error', '-xerror', '-n', '-i', oggPath, '-map', '0:a:0', '-c:a', 'aac', '-b:a', '128k', playbackPath], { signal, onOutput: ffmpegProgress(sourceDuration, percent => report({ percent })) });
+      report({ stage: 'verifying', percent: null });
+      const probe = JSON.parse(await runPlaudAudioTool(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', playbackPath], { signal }));
       const duration = Number(probe.format?.duration);
       if (!Number.isFinite(duration) || duration <= 0) throw new Error('Decoded Plaud recording has no playable duration');
       signal.throwIfAborted();
@@ -130,6 +138,8 @@ export async function importDirectPlaudRecording(sessionId: number) {
       });
       // Device bytes, decoded audio and provenance are staged with the playback copy and become
       // visible together with the recording row (REL-03).
+      signal.throwIfAborted();
+      report({ stage: 'saving', percent: null });
       const result = await importRecordingFile({ sourcePath: playbackPath, originalFilename: `Plaud-${sessionId}.m4a`,
         provenance: { sourceProvider: 'plaud', sourceTransport: 'ble', sourceRecordingId: `${identity.serial}:${sessionId}` },
         metadata: { durationMs },
@@ -144,6 +154,7 @@ export async function importDirectPlaudRecording(sessionId: number) {
       if (result.added) await import('../library/processing')
         .then(({ queueRecordingProcessing }) => queueRecordingProcessing({ recordingId: result.recording.id, filePath: result.recording.filePath }))
         .catch(error => console.error('[Plaud] Imported recording could not be queued for processing:', error));
+      report({ stage: 'complete', percent: 100 });
       return { ...result, durationMs, sourceRetained: true };
     } finally {
       for (const path of [encryptedPath, oggPath, playbackPath]) await unlink(path).catch(() => undefined);

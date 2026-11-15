@@ -3,6 +3,8 @@ use tauri::Manager;
 mod plaud;
 #[cfg(desktop)]
 mod desktop_exports;
+#[cfg(desktop)]
+mod plaud_login;
 
 #[cfg(desktop)]
 use std::{fs, net::UdpSocket, path::PathBuf};
@@ -140,6 +142,8 @@ pub fn run() {
     .setup(|app| {
       #[cfg(desktop)]
       start_service(app)?;
+      #[cfg(desktop)]
+      app.manage(plaud_login::LoginState::default());
 
       #[cfg(mobile)]
       app.manage(RuntimeInfo {
@@ -159,7 +163,7 @@ pub fn run() {
   #[cfg(desktop)]
   let builder = builder.invoke_handler(tauri::generate_handler![
     runtime_info, plaud::plaud_command, desktop_exports::export_document, desktop_exports::export_audio,
-    desktop_exports::pick_export_folder
+    desktop_exports::pick_export_folder, plaud_login::plaud_sign_in, plaud_login::plaud_cancel_sign_in
   ]);
   #[cfg(mobile)]
   let builder = builder.invoke_handler(tauri::generate_handler![runtime_info, plaud::plaud_command]);
