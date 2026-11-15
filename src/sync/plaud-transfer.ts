@@ -1,4 +1,5 @@
-import { buildDownloadRequest, buildHandshake, buildSessionRequest, parseSessionPage, type PlaudSessionEntry } from './plaud-protocol';
+import { freemem } from 'node:os';
+import { buildDeleteRequest, buildDownloadRequest, buildHandshake, buildSessionRequest, parseSessionPage, type PlaudSessionEntry } from './plaud-protocol';
 
 export interface PlaudPackets {
   write(packet: Uint8Array): Promise<void>;
@@ -26,15 +27,24 @@ export class PlaudSessionPages {
   }
 }
 
+// The decoder and resume path still use whole-file buffers. Reserve headroom for
+// those buffers instead of imposing a small recording-size limit.
+export function checkPlaudDownloadSize(size: number, availableMemory = freemem()) {
+  if (!Number.isSafeInteger(size) || size <= 0 || size > 0xffffffff) {
+    throw new Error('Invalid Plaud recording size');
+  }
+  if (size * 6 + 256 * 1024 * 1024 > availableMemory) {
+    throw new Error(`Not enough available memory to import this ${Math.ceil(size / 1048576)} MiB recording. Close other applications and retry; the original stays on the Plaud.`);
+  }
+}
+
 export class PlaudDownload {
   private bytes: Buffer;
   private offset = 0;
   private head = false;
   private completed = false;
   constructor(readonly session: PlaudSessionEntry, prefix: Uint8Array = new Uint8Array()) {
-    if (!Number.isSafeInteger(session.size) || session.size <= 0 || session.size > 64 * 1024 * 1024) {
-      throw new Error('Recording exceeds the current 64 MiB Bluetooth transfer limit');
-    }
+    checkPlaudDownloadSize(session.size);
     this.bytes = Buffer.alloc(session.size);
     if (prefix.length >= session.size) throw new Error('Resume prefix must leave a nonempty download range');
     this.bytes.set(prefix); this.offset = prefix.length;
@@ -115,14 +125,39 @@ export async function downloadPlaudSession(connection: PlaudPackets, session: Pl
   options: { prefix?: Uint8Array; checkpoint?: (bytes: Buffer) => Promise<void> } = {}) {
   const download = new PlaudDownload(session, options.prefix);
   await connection.write(buildDownloadRequest({ sessionId: session.sessionId, offset: options.prefix?.length ?? 0, end: session.size }));
-  const deadline = Date.now() + 15 * 60000;
+  let deadline = Date.now() + 15000;
   let checkpointed = options.prefix?.length ?? 0;
   try {
   while (Date.now() < deadline) {
-    const result = download.add(await connection.packet(Math.min(15000, deadline - Date.now())));
-    if (download.downloaded.length - checkpointed >= 65536) { await options.checkpoint?.(download.downloaded); checkpointed = download.downloaded.length; }
+    const before = download.downloaded.length;
+    const result = download.add(await connection.packet(Math.max(1, deadline - Date.now())));
+    if (download.downloaded.length > before) deadline = Date.now() + 15000;
+    if (download.downloaded.length - checkpointed >= 65536) { await options.checkpoint?.(download.downloaded); checkpointed = download.downloaded.length; deadline = Date.now() + 15000; }
     if (result) return result;
   }
   throw new Error('Recording download timed out; partial audio was not imported');
   } finally { if (download.downloaded.length) await options.checkpoint?.(download.downloaded); }
+}
+
+/** Protocol 20 only. Send once: a lost reply must never cause an automatic retry. */
+export async function deletePlaudSession(connection: PlaudPackets, sessionId: number): Promise<void> {
+  const request = buildDeleteRequest(sessionId);
+  try {
+    await connection.write(request);
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      const packet = await connection.packet(deadline - Date.now());
+      if (packet.length < 3 || packet[0] !== 1 || packet.readUInt16LE(1) !== 31) continue;
+      if (packet.length !== 8 || packet.readUInt32LE(3) !== sessionId || packet[7] !== 0) {
+        throw new Error('Invalid or rejected deletion acknowledgement');
+      }
+      if ((await listPlaudSessions(connection)).some(session => session.sessionId === sessionId)) {
+        throw new Error('Session still listed');
+      }
+      return;
+    }
+    throw new Error('Deletion acknowledgement timeout');
+  } catch {
+    throw new Error('Deletion could not be confirmed. Refresh the device list before trying again. Your local backup is kept.');
+  }
 }

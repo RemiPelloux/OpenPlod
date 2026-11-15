@@ -37,3 +37,9 @@ describe('desktop Plaud diagnostics', () => {
     expect(calls).toBe(2);
   });
 });
+
+
+test('Linux scan uses the Bluetooth address rather than the BlueZ device path', () => {
+  expect(parsePlaudProbe(JSON.stringify({ detected: true, name: 'Plaud', connectionVerified: false, detail: 'fixture', identifier: 'AA:BB:CC:DD:EE:FF' })).identifier).toBe('AA:BB:CC:DD:EE:FF');
+  expect(parsePlaudProbe(JSON.stringify({ detected: true, name: 'Plaud', connectionVerified: false, detail: 'fixture', identifier: 'hci0/dev_AA_BB_CC_DD_EE_FF' })).identifier).toBeNull();
+});

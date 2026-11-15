@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "bench": "bun run scripts/benchmark.ts",
+    "check:plaud-ui": "bun scripts/check-plaud-ui.mjs",
     "check:a11y": "node scripts/check-a11y.mjs",
     "mcp": "bun run src/mcp/index.ts",
     "check:android": "bun run scripts/check-android-alignment.ts",

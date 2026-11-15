@@ -1,6 +1,9 @@
+import { PlaudDeleteDialog } from '@/components/PlaudDeleteDialog'
+import { PlaudImportProgress } from '@/components/PlaudImportProgress'
+import type { PlaudImportProgress as ImportProgress } from '@/lib/api'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AudioLines, Bluetooth, Check, CheckCircle2, Clock3, Download, FileAudio, FolderOpen, HardDrive, Loader2, Radio, RefreshCw, ShieldCheck, X } from "@/components/icons"
+import { AudioLines, Bluetooth, Check, CheckCircle2, Clock3, Download, FileAudio, FolderOpen, HardDrive, Loader2, Radio, RefreshCw, ShieldCheck, Trash2, X } from "@/components/icons"
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { NoteDialog } from '@/components/NoteDialogs'
@@ -22,6 +25,7 @@ export function DesktopPlaud() {
   const [sessions, setSessions] = useState<DeviceRecording[] | null>(null)
   const [selected, setSelected] = useState<number[]>([])
   const [confirmation, setConfirmation] = useState<DeviceRecording[] | null>(null)
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
   const [downloading, setDownloading] = useState<number | null>(null)
   const [checkedAt, setCheckedAt] = useState<Date | null>(null)
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -29,8 +33,10 @@ export function DesktopPlaud() {
   const mounted = useRef(true)
   const active = useRef<AbortController | null>(null)
   const cancelling = useRef(false)
+  const deletionTrigger = useRef<HTMLButtonElement | null>(null)
   const recordingSection = useRef<HTMLElement>(null)
-  const busy = phase !== 'idle'
+  const [deletion, setDeletion] = useState<DeviceRecording | null>(null)
+  const busy = phase !== 'idle' || deletion !== null
   const pending = sessions?.filter(session => !session.recordingId) || []
 
   const loadStats = useCallback(() => {
@@ -69,8 +75,8 @@ export function DesktopPlaud() {
     let saved = 0
     try {
       for (const session of items) {
-        controller.signal.throwIfAborted(); setDownloading(session.sessionId)
-        const id = await api.importDeviceRecording(session.sessionId, controller.signal)
+        controller.signal.throwIfAborted(); setDownloading(session.sessionId); setImportProgress(null)
+        const id = await api.importDeviceRecording(session.sessionId, controller.signal, progress => { if (mounted.current && !controller.signal.aborted) setImportProgress(progress) })
         if (controller.signal.aborted) return
         saved++
         setSessions(current => current?.map(item => item.sessionId === session.sessionId ? { ...item, recordingId: id, retentionState: 'active' } : item) ?? null)
@@ -112,9 +118,9 @@ export function DesktopPlaud() {
       <section className="plaud-device-overview" aria-label={t('Desktop Plaud connection')}>
         <div className="plaud-product-image"><img src="/plaud-note-pro.png" alt={t('Plaud Note Pro recorder')} width="220" height="280" /></div>
         <div className="plaud-device-info"><h2>{status?.deviceName || 'Plaud Note Pro'}</h2><p>{t('AI voice recorder')}</p>
-          <dl><div><dt><Bluetooth />Bluetooth</dt><dd className="plaud-state" data-verified={access}><i />{statusLabel}</dd></div><div><dt><FileAudio />{t('On device')}</dt><dd>{sessions === null ? t('Unknown') : tn(sessions.length, '{count} recording', '{count} recordings')}</dd></div><div><dt><ShieldCheck />{t('Original audio')}</dt><dd>{t('Kept on Plaud')}</dd></div></dl>
+          <dl><div><dt><Bluetooth />Bluetooth</dt><dd className="plaud-state" data-verified={access}><i />{statusLabel}</dd></div><div><dt><FileAudio />{t('On device')}</dt><dd>{sessions === null ? t('Unknown') : tn(sessions.length, '{count} recording', '{count} recordings')}</dd></div><div><dt><ShieldCheck />{t('Original audio')}</dt><dd>{t('Kept during import')}</dd></div></dl>
           <div className="plaud-connect-actions"><Button disabled={busy} onClick={() => void scan()}>{busy ? <Loader2 className="animate-spin" /> : status ? <RefreshCw /> : <Bluetooth />}{phase === 'scanning' ? t('Connecting') : phase === 'listing' ? t('Reading recordings') : status ? t('Refresh recordings') : t('Connect Note Pro')}</Button>
-            {busy && <IconButton label={t('Cancel device operation')} onClick={() => void cancel()}><X /></IconButton>}</div>
+            {phase !== 'idle' && <IconButton label={t('Cancel device operation')} onClick={() => void cancel()}><X /></IconButton>}</div>
           <div className="plaud-secondary-actions"><Button size="sm" variant="outline" disabled={busy || !pending.length} onClick={() => setConfirmation(pending)}><Download />{t('Import new')}</Button><Button asChild variant="outline" size="sm"><Link to="/recordings"><FolderOpen />{t('Open library')}</Link></Button></div>
         </div>
       </section>
@@ -122,7 +128,7 @@ export function DesktopPlaud() {
         <dl>{states.map(({ icon: Icon, name, value, ok }) => <div key={name}><dt><Icon />{name}</dt><dd className="plaud-state" data-verified={ok}><i />{value}</dd></div>)}</dl>
         {status?.detail && <details className="plaud-diagnostics"><summary>{t('Connection details')}</summary><p>{status.detail}</p></details>}
       </section>
-      <section className="plaud-device-recordings" aria-label={t('Recordings on Note Pro')} ref={recordingSection}>
+      <section className="plaud-device-recordings" aria-label={t('Recordings on Note Pro')} ref={recordingSection} tabIndex={-1}>
         <header className="plaud-section-heading"><span className="plaud-section-icon"><FileAudio /></span><div><h2>{t('On your Note Pro')}</h2><p>{sessions === null ? t('Recording count unknown') : tn(sessions.length, '{count} recording / {pending} new', '{count} recordings / {pending} new', { pending: pending.length })}</p></div><Button size="sm" disabled={busy || !selected.length} onClick={() => setConfirmation(pending.filter(session => selected.includes(session.sessionId)))}><Download /><span>{selected.length ? t('Import selected ({count})', { count: selected.length }) : t('Import selected')}</span></Button></header>
         {sessions === null ? <div className="plaud-recordings-empty">{busy ? <Loader2 className="animate-spin" /> : <Bluetooth />}<h3>{busy ? t('Reading your Note Pro') : t('Connect to see recordings')}</h3><p>{status && !status.directTransferAvailable ? t('Device authorization is not configured on this computer.') : error ? t('The device list is unavailable. No recording count has been reported.') : t('No recording list has been received yet.')}</p>{!busy && <Button variant="outline" size="sm" onClick={() => void scan()}><RefreshCw />{error ? t('Try again') : t('Check device')}</Button>}</div>
           : sessions.length === 0 ? <div className="plaud-recordings-empty"><FileAudio /><h3>{t('No completed recordings returned')}</h3><p>{t('Finish a recording on the Note Pro, then refresh.')}</p></div> : <>
@@ -132,9 +138,10 @@ export function DesktopPlaud() {
               <FileAudio /><div className="plaud-session-name"><strong>{sessionDate(session)}</strong><small>{t('Session {id}', { id: session.sessionId })}</small></div><span className="plaud-session-size">{t('{value} KB', { value: Math.round(session.size / 1024) })}</span>
               <span className="plaud-session-state" data-imported={!!session.recordingId}>{session.retentionState === 'trash' ? t('In Trash') : session.recordingId ? t('Imported') : t('New')}</span>
               {session.recordingId ? <Button asChild variant="ghost" size="icon"><Link title={t('Open recording')} aria-label={t('Open recording {id}', { id: session.sessionId })} to={`/recording/${session.recordingId}`}><FolderOpen /></Link></Button> : <IconButton label={t('Import recording {id}', { id: session.sessionId })} disabled={busy} onClick={() => setConfirmation([session])}>{downloading === session.sessionId ? <Loader2 className="animate-spin" /> : <Download />}</IconButton>}
+              {session.recordingId && session.retentionState === 'active' && <IconButton label={t('Delete recording {id} from Plaud', { id: session.sessionId })} disabled={busy} onClick={event => { deletionTrigger.current = event.currentTarget; setDeletion(session) }}><Trash2 /></IconButton>}
             </div>)}</div>
           </>}
-        {phase === 'downloading' && <div className="plaud-import-progress" role="status"><Loader2 className="animate-spin" /><span>{t('Importing session {id}', { id: downloading ?? '' })}</span><Button variant="ghost" size="sm" onClick={() => void cancel()}><X />{t('Cancel')}</Button></div>}
+        {phase === 'downloading' && <div className="plaud-import-progress" role="status"><PlaudImportProgress progress={importProgress} sessionId={downloading} /><Button variant="ghost" size="sm" onClick={() => void cancel()}><X />{t('Cancel')}</Button></div>}
       </section>
       <div className="plaud-vault-column">
         <section className="plaud-vault-summary" aria-label={t('Saved recordings')}><header className="plaud-section-heading"><span className="plaud-section-icon"><HardDrive /></span><div><h2>{t('Saved recordings')}</h2><p>{t('Stored in your desktop vault')}</p></div><IconButton asChild label={t('Open saved recordings')}><Link to="/recordings"><FolderOpen /></Link></IconButton></header>
@@ -144,6 +151,11 @@ export function DesktopPlaud() {
       </div>
       <div className="plaud-authorizations"><PlaudSystemCheck /><PlaudCloudImport /><PlaudDeviceAuthorization status={status} onAuthorized={() => void scan()} /><DesktopAuthorizations /></div>
     </div>
+    {deletion && <PlaudDeleteDialog session={deletion} label={sessionDate(deletion)} onClose={() => { setDeletion(null); requestAnimationFrame(() => deletionTrigger.current?.focus()) }} onDeleted={() => {
+      setSessions(current => current?.filter(item => item.sessionId !== deletion.sessionId) ?? null)
+      setCheckedAt(new Date()); setNotice(t('Recording deleted from Plaud. Your local backup is kept.')); setDeletion(null)
+      window.setTimeout(() => recordingSection.current?.focus(), 0)
+    }} />}
     {confirmation && <NoteDialog title={t('Import from Plaud')} description={tn(confirmation.length, '{count} recording', '{count} recordings')} busy={false} onClose={() => setConfirmation(null)}>
       <p className="plaud-confirm-copy">{t('Save the selected audio to your OpenPlod vault? Original recordings will stay on your Plaud.')}</p><ul className="plaud-confirm-list">{confirmation.map(session => <li key={session.sessionId}><FileAudio /><span>{sessionDate(session)}</span><small>{t('{value} KB', { value: Math.round(session.size / 1024) })}</small></li>)}</ul>
       <footer><Button variant="ghost" onClick={() => setConfirmation(null)}><X />{t('Cancel')}</Button><Button onClick={() => void download()}><Download />{tn(confirmation.length, 'Import {count} recording', 'Import {count} recordings')}</Button></footer>

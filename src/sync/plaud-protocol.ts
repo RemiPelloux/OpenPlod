@@ -107,3 +107,8 @@ export function parseSessionPage(packet: Uint8Array, protocolVersion: number) {
   }
   return { requestId: bytes.readUInt32LE(3), total, offset, entries };
 }
+
+/** Single-session deletion, verified against plaude-archiver e87f345 Protocol.swift. */
+export function buildDeleteRequest(sessionId: number): Buffer {
+  return command(30, uint32(sessionId));
+}

@@ -3,7 +3,7 @@ import { chacha20 } from '@noble/ciphers/chacha.js';
 export type RsaUnwrap = (ciphertext: Buffer) => Promise<Buffer>;
 
 export function parsePlaudAudioHeader(input: Uint8Array) {
-  const bytes = Buffer.from(input);
+  const bytes = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
   if (bytes.length <= 512 || bytes.subarray(0, 8).toString() !== 'PLAUD.AI'
     || bytes.readUInt16LE(8) !== 1 || bytes.readUInt16LE(10) !== 512
     || bytes.readUInt16LE(48) !== 1 || bytes.readUInt16LE(52) !== 1) {
@@ -27,7 +27,7 @@ export function oggCrc(bytes: Uint8Array): number {
 // Raw file ChaCha20 has no authentication tag. Require every Ogg page checksum,
 // continuous per-stream sequence numbers and end-of-stream before accepting audio.
 export function validateOggAudio(input: Uint8Array, expectedChannels: number) {
-  const bytes = Buffer.from(input);
+  const bytes = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
   const streams = new Map<number, { sequence: number; ended: boolean }>();
   let offset = 0, pages = 0, opus = false;
   while (offset < bytes.length) {
@@ -69,7 +69,8 @@ export async function decodePlaudAudio(input: Uint8Array, unwrap: RsaUnwrap) {
   try {
     if (key.length !== 32) throw new Error('Plaud audio key does not match the authorized identity');
     if (header.counter !== 0) throw new Error('Unsupported Plaud audio counter');
-    const audio = Buffer.from(chacha20(key, header.nonce, header.payload));
+    const decrypted = chacha20(key, header.nonce, header.payload);
+    const audio = Buffer.from(decrypted.buffer, decrypted.byteOffset, decrypted.byteLength);
     const integrity = validateOggAudio(audio, header.channels);
     return { audio, integrity };
   } finally { key.fill(0); }

@@ -1,5 +1,9 @@
-import { expect, test } from 'bun:test';
-import { PlaudDownload, PlaudSessionPages, listPlaudSessions, recordingHandshake } from './plaud-transfer';
+import { expect, test, spyOn, beforeEach, afterEach } from 'bun:test';
+import * as os from 'node:os';
+let memory: ReturnType<typeof spyOn>;
+beforeEach(() => { memory = spyOn(os, 'freemem').mockReturnValue(1024 ** 3); });
+afterEach(() => { memory.mockRestore(); });
+import { checkPlaudDownloadSize, PlaudDownload, PlaudSessionPages, listPlaudSessions, recordingHandshake } from './plaud-transfer';
 import { downloadPlaudSession } from './plaud-transfer';
 
 function page(request: number, total: number, offset: number, ids: number[]) {
@@ -60,7 +64,7 @@ test('download rejects wrong sessions, gaps, truncation, overrun and error contr
     const transfer = new PlaudDownload(session); transfer.add(head);
     expect(() => transfer.add(bad)).toThrow();
   }
-  expect(() => new PlaudDownload({ ...session, size: 65 * 1024 * 1024 })).toThrow('limit');
+  for (const size of [0, -1, NaN, 1.5, 0x100000000]) expect(() => new PlaudDownload({ ...session, size })).toThrow('size');
 });
 
 test('session list routes unsolicited notifications without interpreting them as an empty list', async () => {
@@ -82,4 +86,56 @@ test('recording handshake rejects access denial and implements serial-driven sec
   expect(writes.map(packet => packet[5])).toEqual([0, 1]);
   const rejected = Buffer.from(accepted); rejected[3] = 2;
   await expect(recordingHandshake({ write: async () => {}, packet: async () => rejected }, 'a'.repeat(32))).rejects.toThrow('rejected');
+});
+
+
+test('large recordings use memory admission instead of a 64 MiB cap', () => {
+  const size = 65 * 1024 * 1024;
+  expect(() => checkPlaudDownloadSize(size, 1024 ** 3)).not.toThrow();
+  expect(() => checkPlaudDownloadSize(size, 128 * 1024 * 1024)).toThrow('memory');
+  const prefix = Buffer.alloc(size - 4, 3);
+  const transfer = new PlaudDownload({ ...session, size }, prefix);
+  expect(memory).toHaveBeenCalled();
+  transfer.add(head);
+  const last = Buffer.from(data); last.writeUInt32LE(prefix.length, 5);
+  transfer.add(last);
+  const result = transfer.add(tail)!;
+  expect(result.bytes.length).toBe(size);
+  expect(result.bytes[0]).toBe(3);
+  expect(result.bytes.subarray(-4)).toEqual(Buffer.from([1, 2, 3, 4]));
+});
+
+
+test('a progressing download can exceed fifteen minutes without losing resume checks', async () => {
+  let now = 0, index = 0;
+  const clock = spyOn(Date, 'now').mockImplementation(() => now);
+  const packets = [head, ...Array.from({ length: 100 }, (_, position) => {
+    const packet = Buffer.alloc(11); packet[0] = 2; packet.writeUInt32LE(7, 1);
+    packet.writeUInt32LE(position, 5); packet[9] = 1; packet[10] = position;
+    return packet;
+  }), tail];
+  try {
+    const result = await downloadPlaudSession({ write: async () => {}, packet: async () => {
+      now += 10000; return packets[index++]!;
+    } }, { ...session, size: 100 });
+    expect(now).toBeGreaterThan(15 * 60000);
+    expect(result.bytes).toEqual(Buffer.from(Array.from({ length: 100 }, (_, i) => i)));
+  } finally { clock.mockRestore(); }
+});
+
+
+test('slow local checkpoints do not consume recorder receive inactivity', async () => {
+  let now = 0, index = 0;
+  const clock = spyOn(Date, 'now').mockImplementation(() => now);
+  const size = 65536;
+  const packets = [head, ...Array.from({ length: size / 128 }, (_, i) => {
+    const packet = Buffer.alloc(138, 3); packet[0] = 2; packet.writeUInt32LE(7, 1);
+    packet.writeUInt32LE(i * 128, 5); packet[9] = 128; return packet;
+  }), tail];
+  try {
+    const result = await downloadPlaudSession({ write: async () => {}, packet: async () => packets[index++]! },
+      { ...session, size }, { checkpoint: async () => { now += 20000; } });
+    expect(result.bytes.length).toBe(size);
+    expect(index).toBe(packets.length);
+  } finally { clock.mockRestore(); }
 });

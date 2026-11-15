@@ -1,6 +1,7 @@
-import { existsSync } from 'node:fs';
-import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, renameSync } from 'node:fs';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { basename, dirname, join, resolve } from 'node:path';
 import { PlaudDeviceAuth, readDeviceCredentials } from './plaud-device-auth';
 import { isBluetoothIdentifier } from './plaud-bridge';
 
@@ -126,7 +127,8 @@ const describePlaudError = (status: number, detail: string): string => {
 export class PlaudIdentityProvisioner {
   constructor(private readonly fetcher: Fetcher = fetch) {}
 
-  private async post(path: string, token: string, domain: PlaudDomain, body?: unknown): Promise<Record<string, unknown>> {
+  private async post(path: string, token: string, domain: PlaudDomain, body?: unknown, signal?: AbortSignal): Promise<Record<string, unknown>> {
+    signal?.throwIfAborted();
     if (!isPlaudDomain(domain)) throw new Error('Unsupported Plaud region.');
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -134,9 +136,10 @@ export class PlaudIdentityProvisioner {
     try {
       response = await this.fetcher(`https://${domain}${path}`, {
         method: 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body),
-        redirect: 'error', signal: AbortSignal.timeout(20_000),
+        redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000),
       });
     } catch {
+      signal?.throwIfAborted();
       throw new Error('Plaud could not be reached to authorize this recorder.');
     }
     if (!response.ok) {
@@ -152,8 +155,8 @@ export class PlaudIdentityProvisioner {
   }
 
   /** `POST /developer/api/open/partner/sdk/gen-key` */
-  async generateKeyPair(token: string, domain: PlaudDomain = DEFAULT_PLAUD_DOMAIN) {
-    const result = await this.post('/developer/api/open/partner/sdk/gen-key', token, domain);
+  async generateKeyPair(token: string, domain: PlaudDomain = DEFAULT_PLAUD_DOMAIN, signal?: AbortSignal) {
+    const result = await this.post('/developer/api/open/partner/sdk/gen-key', token, domain, undefined, signal);
     const publicKey = typeof result.public_key === 'string' ? result.public_key : '';
     const privateKey = typeof result.private_key === 'string' ? result.private_key : '';
     if (!publicKey || !privateKey) throw new Error('Plaud returned no recorder key material.');
@@ -161,23 +164,23 @@ export class PlaudIdentityProvisioner {
   }
 
   /** `POST /developer/api/open/partner/sdk/sn-sign` */
-  async signSerial(token: string, serial: string, domain: PlaudDomain = DEFAULT_PLAUD_DOMAIN, deviceType = deviceTypeForSerial(serial)) {
-    const result = await this.post('/developer/api/open/partner/sdk/sn-sign', token, domain, { type: deviceType, sn: serial });
+  async signSerial(token: string, serial: string, domain: PlaudDomain = DEFAULT_PLAUD_DOMAIN, deviceType = deviceTypeForSerial(serial), signal?: AbortSignal) {
+    const result = await this.post('/developer/api/open/partner/sdk/sn-sign', token, domain, { type: deviceType, sn: serial }, signal);
     const signature = typeof result.signature === 'string' ? result.signature : '';
     if (!signature) throw new Error('Plaud returned no recorder signature.');
     return signature;
   }
 
   /** Provision a complete identity for one recorder. */
-  async provision(options: { token: string; serial: string; identifier: string; domain?: PlaudDomain }): Promise<ProvisionedIdentity> {
+  async provision(options: { token: string; serial: string; identifier: string; domain?: PlaudDomain; signal?: AbortSignal }): Promise<ProvisionedIdentity> {
     const { token, serial, identifier } = options;
     const domain = options.domain ?? DEFAULT_PLAUD_DOMAIN;
     if (!PLAUD_SERIAL_PATTERN.test(serial)) throw new Error('A 16-character Plaud serial number is required.');
     if (!isBluetoothIdentifier(identifier)) throw new Error('A Bluetooth address for the recorder is required.');
     const claims = parseAccessToken(token);
     const deviceType = deviceTypeForSerial(serial);
-    const { publicKey, privateKey } = await this.generateKeyPair(token, domain);
-    const signature = await this.signSerial(token, serial, domain, deviceType);
+    const { publicKey, privateKey } = await this.generateKeyPair(token, domain, options.signal);
+    const signature = await this.signSerial(token, serial, domain, deviceType, options.signal);
     return { identifier, serial, bindingToken: claims.sub, publicKey, privateKey, signature, deviceType };
   }
 }
@@ -198,19 +201,36 @@ export async function readStoredIdentity(): Promise<PlaudDeviceIdentity | null> 
 }
 
 /** Persist an identity with owner-only permissions (the loader enforces this). */
-export async function writeStoredIdentity(identity: PlaudDeviceIdentity): Promise<void> {
+export async function writeStoredIdentity(identity: PlaudDeviceIdentity, signal?: AbortSignal): Promise<void> {
   const path = identityFilePath();
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  // Create with 0o600 up front so the key material is never briefly world-readable.
-  await writeFile(path, `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600 });
-  if (process.platform !== 'win32') await chmod(path, 0o600);
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  try {
+    signal?.throwIfAborted();
+    await writeFile(temporary, `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+    signal?.throwIfAborted();
+    // No asynchronous gap between the cancellation check and atomic commit.
+    renameSync(temporary, path);
+  } finally { await rm(temporary, { force: true }); }
 }
 
 export async function clearStoredIdentity(): Promise<boolean> {
   const path = identityFilePath();
-  if (!existsSync(path)) return false;
+  let removed = existsSync(path);
   await rm(path, { force: true });
-  return true;
+  // Also remove private staging files left by a process crash during an atomic save.
+  const names = await readdir(dirname(path)).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  const prefix = `${basename(path)}.`;
+  for (const name of names) {
+    if (name.startsWith(prefix) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/.test(name.slice(prefix.length))) {
+      await rm(join(dirname(path), name), { force: true });
+      removed = true;
+    }
+  }
+  return removed;
 }
 
 /**

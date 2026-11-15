@@ -187,3 +187,19 @@ describe('provisionWithDeveloperCredentials', () => {
     })).rejects.toThrow(/client ID and secret/);
   });
 });
+
+
+test('partner cancellation aborts the request and prevents serial signing', async () => {
+  const controller = new AbortController();
+  let calls = 0, aborted = false;
+  const provisioner = new PlaudIdentityProvisioner(async (_url, init) => {
+    calls++;
+    return new Promise<Response>((_resolve, reject) => {
+      init.signal!.addEventListener('abort', () => { aborted = true; reject(init.signal!.reason); }, { once: true });
+      controller.abort(new Error('cancelled by test'));
+    });
+  });
+  await expect(provisioner.provision({ token: token({ sub: BINDING_TOKEN }), serial: SERIAL, identifier: MAC, signal: controller.signal })).rejects.toThrow('cancelled by test');
+  expect(aborted).toBe(true);
+  expect(calls).toBe(1);
+});

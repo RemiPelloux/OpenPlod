@@ -1,3 +1,5 @@
+import { PlaudImportProgress } from './PlaudImportProgress'
+import type { PlaudImportProgress as ImportProgress } from '@/lib/api'
 import { useEffect, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Link } from 'react-router-dom'
@@ -22,6 +24,7 @@ export function PlaudImportDialog({ variant = 'default' }: { variant?: 'default'
   const [error, setError] = useState('')
   const [needsAuthorization, setNeedsAuthorization] = useState(false)
   const [notice, setNotice] = useState('')
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
   const [progress, setProgress] = useState({ current: 0, total: 0, sessionId: 0 })
   const operation = useRef<AbortController | null>(null)
   const [cancelling, setCancelling] = useState(false)
@@ -71,8 +74,9 @@ export function PlaudImportDialog({ variant = 'default' }: { variant?: 'default'
     try {
       for (const row of queue) {
         controller.signal.throwIfAborted()
+        setImportProgress(null)
         setProgress({ current: completed, total: queue.length, sessionId: row.sessionId })
-        const id = await api.importDeviceRecording(row.sessionId, controller.signal)
+        const id = await api.importDeviceRecording(row.sessionId, controller.signal, progress => { if (!controller.signal.aborted) setImportProgress(progress) })
         controller.signal.throwIfAborted()
         completed++
         setRows(current => current?.map(item => item.sessionId === row.sessionId ? { ...item, recordingId: id, retentionState: 'active' } : item) ?? null)
@@ -157,7 +161,7 @@ export function PlaudImportDialog({ variant = 'default' }: { variant?: 'default'
           </>}
         </div>
         <footer className="plaud-import-footer">
-          {busy === 'importing' ? <div className="plaud-import-progress" role="status"><Loader2 className="animate-spin" /><span>{t('Importing {current} of {total}', { current: progress.current + 1, total: progress.total })}<small>{t('Recording {id}', { id: progress.sessionId })}</small></span><progress max={progress.total} value={progress.current} aria-label={t('Completed recordings')} /></div>
+          {busy === 'importing' ? <div className="plaud-import-progress" role="status"><PlaudImportProgress progress={importProgress} sessionId={progress.sessionId} /><small>{t('Importing {current} of {total}', { current: progress.current + 1, total: progress.total })}</small></div>
             : <div className="plaud-import-retention"><ShieldCheck /><span>{selected.length ? t('{count} selected / {size}', { count: selected.length, size: bytesLabel(selectedBytes) }) : t('Originals kept on device')}</span></div>}
           {busy ? <Button variant="outline" disabled={cancelling || busy === 'restoring'} onClick={() => void cancel()}>{cancelling ? t('Stopping...') : t('Cancel')}</Button>
             : <Button disabled={!selected.length} onClick={() => void importSelected()}><Download />{selected.length ? t('Import {count}', { count: selected.length }) : t('Import')}</Button>}
