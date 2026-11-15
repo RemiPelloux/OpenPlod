@@ -458,6 +458,7 @@ function ProviderComparison({ recording, busy, run, onVersionAdded }: {
   const [provider, setProvider] = useState('')
   const [confirmed, setConfirmed] = useState(false)
   const [customBaseUrl, setCustomBaseUrl] = useState('')
+  const lastEndpoint = useRef('')
   const [discovery, setDiscovery] = useState<{ endpoint: string; models: string[] } | null>(null)
   const [model, setModel] = useState('')
   const [loadError, setLoadError] = useState('')
@@ -472,7 +473,14 @@ function ProviderComparison({ recording, busy, run, onVersionAdded }: {
     if (previous && data.runs.some(next => next.versionId && !previous.some(old => old.jobId === next.jobId && old.versionId))) added.current()
     setRuns(data.runs)
     setAvailable(data.available)
-    setCustomBaseUrl(data.customBaseUrl ?? '')
+    const endpoint = data.customBaseUrl ?? ''
+    if (lastEndpoint.current !== endpoint) {
+      lastEndpoint.current = endpoint
+      setCustomBaseUrl(endpoint)
+      setConfirmed(false)
+      setModel('')
+      setDiscovery(null)
+    }
   }, [])
   const load = useCallback(async () => { apply(await api.providerComparisons(recording.id)) }, [apply, recording.id])
 
@@ -542,8 +550,12 @@ function ProviderComparison({ recording, busy, run, onVersionAdded }: {
             <div className="tstudio-actions">
               <Button size="sm" disabled={!provider || !confirmed || Boolean(busy) || (custom && !customReady)}
                 onClick={() => void run('provider-compare', async () => {
-                  const result = await api.startProviderComparison(recording.id, provider, custom ? { model, expectedCustomEndpoint: customBaseUrl } : undefined)
                   setConfirmed(false)
+                  const result = await api.startProviderComparison(recording.id, provider, custom ? { model, expectedCustomEndpoint: customBaseUrl } : undefined)
+                    .catch(async error => {
+                      if (custom) await load().catch(() => {})
+                      throw error
+                    })
                   await load()
                   return result.alreadyQueued
                     ? t('A {provider} comparison is already queued for this recording.', { provider: providerLabel(provider) })
