@@ -68,7 +68,10 @@ describe('comparison requests', () => {
       customBaseUrl: 'http://127.0.0.1:8000/v1', transcriptionDiarize: true,
       transcriptionVocabulary: ['OpenPlod'], transcriptionPrompt: 'Meeting context',
     }), 'aiConfig');
-    const prepared = prepareComparison(database, recordingId, { provider: 'custom', model: 'VibeVoice-ASR', confirm: true }, { ...available, custom: true });
+    const request = { provider: 'custom', model: 'VibeVoice-ASR', confirm: true };
+    const providers = { ...available, custom: true };
+    expect(() => prepareComparison(database, recordingId, { ...request, expectedCustomEndpoint: 'https://other.example/v1' }, providers)).toThrow('endpoint changed');
+    const prepared = prepareComparison(database, recordingId, { ...request, expectedCustomEndpoint: 'http://127.0.0.1:8000/v1' }, providers);
     expect(prepared.config).toMatchObject({
       transcriptionModel: 'VibeVoice-ASR', transcriptionDiarize: true, transcriptionPrompt: '', transcriptionVocabulary: [],
     });

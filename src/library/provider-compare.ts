@@ -30,7 +30,7 @@ export class ComparisonError extends Error {
 
 export const comparisonKey = (recordingId: string, provider: string) => `compare:${recordingId}:${provider}`;
 
-export interface ComparisonRequest { provider?: unknown; model?: unknown; confirm?: unknown }
+export interface ComparisonRequest { provider?: unknown; model?: unknown; expectedCustomEndpoint?: unknown; confirm?: unknown }
 
 export interface ComparisonJobData {
   recordingId: string;
@@ -70,6 +70,9 @@ export function prepareComparison(database: Database, recordingId: string, input
   }
   if (!available[engine]) throw new ComparisonError(400, `${speechCapabilities[engine].label} is not configured.`);
   const base = readAiConfig(database);
+  if (engine === 'custom' && input.expectedCustomEndpoint !== base.customBaseUrl) {
+    throw new ComparisonError(409, 'The custom endpoint changed. Review the destination and confirm again.');
+  }
   try { assertPrivacy(base, engine); } catch (error) { throw new ComparisonError(400, (error as Error).message); }
 
   const capabilities = speechCapabilities[engine];
@@ -102,6 +105,12 @@ export async function queueComparison(queue: JobQueue, database: Database, recor
   const data = prepareComparison(database, recordingId, input, available);
   const key = comparisonKey(recordingId, data.compare.provider);
   const before = queue.getAllJobs().find(job => job.dedupeKey === key && ['pending', 'running'].includes(job.status));
+  if (before && data.compare.provider === 'custom') {
+    const existing = (before.data as ComparisonJobData).config;
+    if (existing.customBaseUrl !== data.config.customBaseUrl || existing.transcriptionModel !== data.config.transcriptionModel) {
+      throw new ComparisonError(409, 'A different custom comparison is already queued for this recording.');
+    }
+  }
   const job = await queue.add('process-recording', data, 0, { dedupeKey: key });
   return { job, alreadyQueued: before?.id === job.id };
 }

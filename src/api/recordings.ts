@@ -671,7 +671,7 @@ const engineStatus = () => new TranscriptionRouter({}, readSettings(sqlite)).sta
 app.get('/:id/transcript/provider-comparisons', c => {
   const id = c.req.param('id');
   c.header('Cache-Control', 'no-store');
-  return c.json({ success: true, data: { runs: listComparisons(jobQueue, sqlite, id), available: engineStatus() } });
+  return c.json({ success: true, data: { runs: listComparisons(jobQueue, sqlite, id), available: engineStatus(), customBaseUrl: readAiConfig(sqlite).customBaseUrl } });
 });
 
 app.post('/:id/transcript/provider-comparisons', async c => {
