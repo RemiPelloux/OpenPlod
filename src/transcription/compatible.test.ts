@@ -3,7 +3,7 @@ import { Database } from 'bun:sqlite';
 import { OpenAiEngine } from './openai';
 import { createAiSettingsApi } from '../api/ai-settings';
 import { estimateSpeechUsd } from '../ai/pricing';
-import { aiConfigFromSettings, aiConfigSchema } from '../ai/config';
+import { aiConfigFromSettings, aiConfigSchema, assertQueuedTranscriptionPrivacy } from '../ai/config';
 import { TranscriptionRouter } from './router';
 const fake = (fn: (url: string, init: RequestInit) => Promise<Response>) => fn as typeof fetch;
 const audio = Buffer.from('fixture');
@@ -93,5 +93,32 @@ test('custom providers require a chosen model and cannot be a fallback', () => {
 test('custom models with inherited property names still have unknown prices', () => {
   for (const model of ['constructor', 'toString', '__proto__']) {
     expect(estimateSpeechUsd('custom', model, 60)).toBeNull();
+  }
+});
+
+
+test('a live local-only change blocks subsequent chunks at the queued remote endpoint', async () => {
+  using db = new Database(':memory:');
+  db.exec('CREATE TABLE user_settings(key TEXT PRIMARY KEY, value TEXT)');
+  const remote = 'https://speech.example/v1';
+  const save = db.query("INSERT OR REPLACE INTO user_settings VALUES ('aiConfig', ?)");
+  save.run(JSON.stringify({ customBaseUrl: remote }));
+  const originalFetch = globalThis.fetch;
+  const requests: string[] = [];
+  globalThis.fetch = fake(async url => {
+    requests.push(url);
+    return Response.json({ text: 'Synthetic chunk', duration: 1 });
+  });
+  try {
+    const router = new TranscriptionRouter({
+      primary: 'custom',
+      beforeAttempt: provider => assertQueuedTranscriptionPrivacy(db, remote, provider),
+    }, { customBaseUrl: remote }).primaryOnly();
+    expect((await router.transcribeBuffer(audio, 'audio/wav', { model: 'fixture' })).success).toBe(true);
+    save.run(JSON.stringify({ privacyMode: 'local-only', customBaseUrl: 'http://localhost:18080/v1' }));
+    await expect(router.transcribeBuffer(audio, 'audio/wav', { model: 'fixture' })).rejects.toThrow('Local-only mode blocks this provider');
+    expect(requests).toEqual([`${remote}/audio/transcriptions`]);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

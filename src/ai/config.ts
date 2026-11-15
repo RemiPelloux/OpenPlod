@@ -93,6 +93,11 @@ export function assertPrivacy(config: Pick<AiConfig, 'privacyMode' | 'customBase
   if (config.privacyMode === 'local-only' && !isLocalProvider(config, provider))
     throw new Error('Local-only mode blocks this provider. Change AI settings before sending data.');
 }
+
+/** Apply the latest privacy mode to the endpoint captured by the queued job. */
+export function assertQueuedTranscriptionPrivacy(database: Database, customBaseUrl: string, provider: SpeechProvider): void {
+  assertPrivacy({ privacyMode: readAiConfig(database).privacyMode, customBaseUrl }, provider);
+}
 export const textModels: Record<TextProvider, string> = {
   mistral: 'mistral-small-latest', openai: 'gpt-4.1-mini', anthropic: 'claude-sonnet-4-5', ollama: '', gemini: 'gemini-2.5-flash', custom: '',
 };

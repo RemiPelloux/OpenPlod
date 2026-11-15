@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { aiConfigSchema, assertPrivacy, readAiConfig, readSettings, sameCustomEndpoint, speechProviders, type AiConfig, type SpeechProvider } from '../ai/config';
+import { aiConfigSchema, assertPrivacy, assertQueuedTranscriptionPrivacy, readAiConfig, readSettings, sameCustomEndpoint, speechProviders, type AiConfig, type SpeechProvider } from '../ai/config';
 import { omitsTranscriptionHints, speechCapabilities, validateSpeechOptions } from '../ai/capabilities';
 import type { Job, JobContext, JobQueue } from '../jobs/queue';
 import { TranscriptionRouter } from '../transcription/router';
@@ -130,7 +130,7 @@ export const routerTranscriber = (database: Database): ComparisonTranscriber => 
   const router = new TranscriptionRouter({
     primary: config.transcriptionEngine, fallback: [],
     localOnly: currentConfig.privacyMode === 'local-only' || config.privacyMode === 'local-only',
-    beforeAttempt: provider => assertPrivacy(readAiConfig(database), provider),
+    beforeAttempt: provider => assertQueuedTranscriptionPrivacy(database, config.customBaseUrl, provider),
   }, { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey, openaiApiKey: settings.openaiApiKey, assemblyaiApiKey: settings.assemblyaiApiKey, customApiKey: sameCustomEndpoint(config.customBaseUrl, currentConfig.customBaseUrl) ? settings.customApiKey : undefined, customBaseUrl: config.customBaseUrl });
   return router.transcribeFile(filePath, options);
 };
@@ -152,7 +152,7 @@ export async function runComparison(database: Database, raw: ComparisonJobData, 
   };
   unchanged();
   if (database.query('SELECT 1 FROM transcript_versions WHERE id = ?').get(job.id)) return;
-  assertPrivacy(readAiConfig(database), provider);
+  assertQueuedTranscriptionPrivacy(database, config.customBaseUrl, provider);
 
   const startedAt = new Date().toISOString();
   const options = optionsFor(config);
