@@ -2649,6 +2649,7 @@ dependencies = [
  "log",
  "reqwest",
  "rfd",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",

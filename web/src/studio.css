@@ -331,6 +331,7 @@
 }
 .studio-library-heading {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
@@ -367,11 +368,23 @@
   margin-bottom: 15px;
   flex-wrap: wrap;
 }
+.studio-source-actions {
+  display: flex;
+  align-items: flex-start;
+  max-width: 100%;
+  gap: 6px;
+}
+.studio-source-actions .studio-source-tabs {
+  min-width: 0;
+  overflow-x: auto;
+}
+.studio-export-action { flex-shrink: 0; }
 .studio-source-tabs {
   display: flex;
   gap: 4px;
 }
 .studio-source-tabs button,
+.studio-export-action,
 .studio-control,
 .studio-sort-tools select {
   height: 33px;
@@ -386,12 +399,14 @@
   gap: 5px;
   white-space: nowrap;
 }
-.studio-source-tabs button svg {
+.studio-source-tabs button svg,
+.studio-export-action svg {
   width: 12px;
   height: 12px;
 }
-.studio-source-tabs button { border-color: transparent; background: transparent; }
-.studio-source-tabs button:hover { background: var(--secondary); }
+.studio-source-tabs button, .studio-export-action { border-color: transparent; background: transparent; }
+.studio-source-tabs button:hover, .studio-export-action:hover:not(:disabled) { background: var(--secondary); }
+.studio-export-action:disabled { opacity: .4; }
 .studio-source-tabs button[aria-selected="true"] {
   color: var(--foreground);
   background: var(--secondary);
@@ -1189,7 +1204,7 @@
   .studio-sort-tools {
     gap: 5px;
   }
-  .studio-source-tabs button {
+  .studio-source-tabs button, .studio-export-action {
     padding: 0 8px;
   }
 }
@@ -1327,11 +1342,12 @@
     background: var(--sidebar);
   }
 }
-@media (max-width: 360px) {
+@media (max-width: 480px) {
+  .studio-source-actions { gap: 4px; }
   .studio-source-tabs { gap: 3px; }
-  .studio-source-tabs button { padding: 0 6px; font-size: 11px; }
-  .studio-source-tabs button span { display: none; }
-  .studio-source-tabs button svg { display: block; width: 16px; height: 16px; }
+  .studio-source-tabs button, .studio-export-action { padding: 0 6px; font-size: 11px; }
+  .studio-source-tabs button:not(#source-tab-imported) span { display: none; }
+  .studio-source-tabs button svg, .studio-export-action svg { display: block; width: 16px; height: 16px; }
 }
 @media (min-width: 1101px) and (max-width: 1350px) {
   .preview-tabs button:not([aria-selected='true']) span { display: none; }
@@ -1339,7 +1355,7 @@
 }
 @media (pointer: coarse) {
   .ui-button[data-size='icon'] { min-width: 40px; min-height: 40px; }
-  .studio-source-tabs button { min-height: 40px; }
+  .studio-source-tabs button, .studio-export-action { min-height: 40px; }
 }
 @media (min-width: 901px) and (max-height: 850px) {
   .workspace-footer { min-height: 38px; flex-basis: 38px; }
