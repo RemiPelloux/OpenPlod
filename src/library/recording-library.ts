@@ -1,3 +1,4 @@
+import { withRecordingLease } from './recording-lease';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { copyFile, mkdir, rename, rm, stat, unlink } from 'node:fs/promises';
@@ -220,7 +221,11 @@ async function attachMissingSidecars(recording: { id: string; filePath: string }
   } finally { await rm(staging, { recursive: true, force: true }).catch(() => undefined); }
 }
 
-export async function replaceRecordingAudio(params: {
+export async function replaceRecordingAudio(params: Parameters<typeof replaceRecordingAudioUnlocked>[0]): Promise<void> {
+  return withRecordingLease(params.recordingId, () => replaceRecordingAudioUnlocked(params));
+}
+
+async function replaceRecordingAudioUnlocked(params: {
   recordingId: string;
   sourcePath: string;
   expectedRevision?: number;
@@ -259,6 +264,10 @@ export async function replaceRecordingAudio(params: {
 }
 
 export async function softDeleteRecording(recordingId: string): Promise<boolean> {
+  return withRecordingLease(recordingId, () => softDeleteRecordingUnlocked(recordingId));
+}
+
+async function softDeleteRecordingUnlocked(recordingId: string): Promise<boolean> {
   const [recording] = await db.select().from(recordings).where(eq(recordings.id, recordingId)).limit(1);
   if (!recording) return false;
   await db.update(recordings).set({

@@ -1,5 +1,5 @@
 import { freemem } from 'node:os';
-import { buildDownloadRequest, buildHandshake, buildSessionRequest, parseSessionPage, type PlaudSessionEntry } from './plaud-protocol';
+import { buildDeleteRequest, buildDownloadRequest, buildHandshake, buildSessionRequest, parseSessionPage, type PlaudSessionEntry } from './plaud-protocol';
 
 export interface PlaudPackets {
   write(packet: Uint8Array): Promise<void>;
@@ -137,4 +137,27 @@ export async function downloadPlaudSession(connection: PlaudPackets, session: Pl
   }
   throw new Error('Recording download timed out; partial audio was not imported');
   } finally { if (download.downloaded.length) await options.checkpoint?.(download.downloaded); }
+}
+
+/** Protocol 20 only. Send once: a lost reply must never cause an automatic retry. */
+export async function deletePlaudSession(connection: PlaudPackets, sessionId: number): Promise<void> {
+  const request = buildDeleteRequest(sessionId);
+  try {
+    await connection.write(request);
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      const packet = await connection.packet(deadline - Date.now());
+      if (packet.length < 3 || packet[0] !== 1 || packet.readUInt16LE(1) !== 31) continue;
+      if (packet.length !== 8 || packet.readUInt32LE(3) !== sessionId || packet[7] !== 0) {
+        throw new Error('Invalid or rejected deletion acknowledgement');
+      }
+      if ((await listPlaudSessions(connection)).some(session => session.sessionId === sessionId)) {
+        throw new Error('Session still listed');
+      }
+      return;
+    }
+    throw new Error('Deletion acknowledgement timeout');
+  } catch {
+    throw new Error('Deletion could not be confirmed. Refresh the device list before trying again. Your local backup is kept.');
+  }
 }

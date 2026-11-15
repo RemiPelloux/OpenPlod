@@ -862,6 +862,15 @@ export const api = {
     const res = await fetchJSON<ApiEnvelope<DeviceRecording[]>>('/plaud/device-recordings', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(150000)]) : AbortSignal.timeout(150000) })
     return res.data
   },
+  prepareDeviceDeletion: async (recordingId: string, sessionId: number) => {
+    const result = await fetchJSON<ApiEnvelope<{ token: string; expiresAt: number }>>('/plaud/device-delete/prepare', {
+      method: 'POST', body: JSON.stringify({ recordingId, sessionId }),
+    })
+    return result.data
+  },
+  confirmDeviceDeletion: async (token: string) => {
+    await fetchJSON('/plaud/device-delete/confirm', { method: 'POST', body: JSON.stringify({ token, confirm: true }) })
+  },
   importDeviceRecording: async (sessionId: number, signal?: AbortSignal, onProgress?: (progress: PlaudImportProgress) => void): Promise<string> => {
     const start = await fetchJSON<ApiEnvelope<{ id: string }>>('/plaud/device-import', {
       method: 'POST', body: JSON.stringify({ sessionId, confirm: true }), signal,

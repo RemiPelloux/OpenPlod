@@ -24,6 +24,7 @@ try {
     const page = await context.newPage();
     page.setDefaultTimeout(12000);
     const errors = [], unexpected = [];
+    let deletionCalls = 0, verificationCalls = 0, deletionFailure = false, verificationFailure = false;
     let phase = 'downloading', percent = 42, resumedBytes = 0, cancelled = false, unauthorized = false, authorizeSuccess = false;
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/*', async route => {
@@ -33,7 +34,20 @@ try {
       const path = url.pathname.slice(4);
       let data;
       if (path === '/plaud/status') data = { deviceDetected: true, connectionVerified: true, directTransferAvailable: true, deviceName: 'Plaud test fixture', deviceSerial: '0000000000000001', deviceIdentifier: 'AA:BB:CC:DD:EE:FF' };
-      else if (path === '/plaud/device-recordings') data = [{ sessionId: 1, size: 100 * 1048576, scene: 0, timezone: 0, recordingId: null, retentionState: null }];
+      else if (path === '/plaud/device-recordings') data = [{ sessionId: 1, size: 100 * 1048576, scene: 0, timezone: 0, recordingId: null, retentionState: null }, { sessionId: 2, size: 2048, scene: 0, timezone: 0, recordingId: 'synthetic-saved', retentionState: 'active' }, { sessionId: 3, size: 2048, scene: 0, timezone: 0, recordingId: 'synthetic-trash', retentionState: 'trash' }];
+      else if (path === '/plaud/device-delete/prepare') {
+        verificationCalls++;
+        assert.deepEqual(route.request().postDataJSON(), { recordingId: 'synthetic-saved', sessionId: 2 });
+        if (verificationFailure) return route.fulfill({ status: 409, json: { success: false, error: 'Backup verification failed.' } });
+        data = { token: 'synthetic-confirmation', expiresAt: Date.now() + 120000 };
+      }
+      else if (path === '/plaud/device-delete/confirm') {
+        deletionCalls++;
+        assert.deepEqual(route.request().postDataJSON(), { token: 'synthetic-confirmation', confirm: true });
+        await new Promise(resolve => setTimeout(resolve, 250));
+        if (deletionFailure) return route.fulfill({ status: 409, json: { success: false, error: 'Deletion could not be confirmed. Refresh the device list before trying again. Your local backup is kept.' } });
+        data = { deleted: true };
+      }
       else if (path === '/plaud/device-import') data = { id: 'synthetic-job' };
       else if (path === '/plaud/device-import/synthetic-job') data = { state: 'running', progress: { stage: phase, percent, receivedBytes: 42 * 1048576, totalBytes: 100 * 1048576, resumedBytes } };
       else if (path === '/plaud/device-cancel') { cancelled = true; data = {}; }
@@ -92,6 +106,42 @@ try {
     assert(await cancel.evaluate(el => { const s = getComputedStyle(el); return (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0) || s.boxShadow !== 'none'; }), 'Keyboard focus must be visible');
     await page.keyboard.press('Enter');
     await progress.waitFor({ state: 'detached' }); assert(cancelled);
+    // Synthetic destructive flow: no backend or recorder is reachable from this suite.
+    const deleteButton = page.getByRole('button', { name: 'Supprimer l’enregistrement 2 du Plaud', exact: true });
+    assert.equal(await page.getByRole('button', { name: 'Supprimer l’enregistrement 3 du Plaud', exact: true }).count(), 0);
+    await deleteButton.click();
+    let deleteDialog = page.getByRole('dialog');
+    const cancelDelete = deleteDialog.getByRole('button', { name: 'Annuler', exact: true });
+    assert(await cancelDelete.evaluate(el => el === document.activeElement));
+    assert.equal(await deleteDialog.getByRole('button', { name: 'Supprimer définitivement du Plaud', exact: true }).count(), 0);
+    await page.keyboard.press('Escape'); await deleteDialog.waitFor({ state: 'detached' });
+    assert.equal(deletionCalls, 0); assert.equal(verificationCalls, 0);
+    await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Supprimer l’enregistrement 2 du Plaud');
+    await page.keyboard.press('Enter'); deleteDialog = page.getByRole('dialog');
+    verificationFailure = true;
+    await deleteDialog.getByRole('button', { name: 'Vérifier la sauvegarde', exact: true }).click();
+    await deleteDialog.getByRole('alert').waitFor(); assert.equal(deletionCalls, 0);
+    verificationFailure = false;
+    await deleteDialog.getByRole('button', { name: 'Vérifier la sauvegarde', exact: true }).click();
+    await deleteDialog.getByText('Sauvegarde vérifiée.', { exact: false }).waitFor();
+    assert(await deleteDialog.evaluate(el => el.scrollWidth <= el.clientWidth + 2), `Delete dialog overflow ${width}`);
+    await page.addScriptTag({ content: axe });
+    const deleteViolations = await page.evaluate(async () => (await window.axe.run('.note-dialog')).violations.filter(v => ['serious', 'critical'].includes(v.impact)).map(v => ({ id: v.id, nodes: v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })) })));
+    assert.deepEqual(deleteViolations, []);
+    if (screenshots) await page.screenshot({ path: join(screenshots, `delete-${width}-${theme}-${motion}.png`) });
+    deletionFailure = true;
+    await deleteDialog.getByRole('button', { name: 'Supprimer définitivement du Plaud', exact: true }).click();
+    await page.keyboard.press('Escape'); assert(await deleteDialog.isVisible());
+    await deleteDialog.getByRole('alert').waitFor(); assert.equal(deletionCalls, 1);
+    assert.equal(await deleteDialog.getByRole('button', { name: 'Supprimer définitivement du Plaud', exact: true }).count(), 0);
+    deletionFailure = false;
+    await deleteDialog.getByRole('button', { name: 'Vérifier la sauvegarde', exact: true }).click();
+    await deleteDialog.getByRole('button', { name: 'Supprimer définitivement du Plaud', exact: true }).click();
+    await deleteDialog.waitFor({ state: 'detached' }); assert.equal(deletionCalls, 2);
+    assert.equal(await deleteButton.count(), 0);
+    await page.getByText('Enregistrement supprimé du Plaud. Votre sauvegarde locale est conservée.', { exact: true }).waitFor();
+    assert(await page.locator('.plaud-device-recordings').evaluate(el => el === document.activeElement));
+    console.log(`PASS deletion ${width}px ${theme} ${motion}: verification, confirmation, cancel, errors, keyboard, accessibility`);
     unauthorized = true; await page.reload();
     await page.getByLabel('Jeton de connexion Plaud', { exact: true }).last().fill('synthetic-session');
     await page.getByRole('button', { name: 'Autoriser cet ordinateur', exact: true }).click();

@@ -37,7 +37,7 @@ export async function loadIdentity(): Promise<DeviceIdentity> {
   return identity;
 }
 
-async function withDevice<T>(operation: (connection: PlaudConnection, identity: DeviceIdentity, signal: AbortSignal) => Promise<T>): Promise<T> {
+async function withDevice<T>(operation: (connection: PlaudConnection, identity: DeviceIdentity, signal: AbortSignal) => Promise<T>, retry = true): Promise<T> {
   if (active) throw new Error('A Plaud Bluetooth operation is already running');
   if (!directPlaudConfigured()) throw new Error('Authorize this Plaud recorder on this computer before connecting');
   const controller = new AbortController(); active = controller;
@@ -55,8 +55,9 @@ async function withDevice<T>(operation: (connection: PlaudConnection, identity: 
         await recordingHandshake(connection, identity.bindingToken);
         return await operation(connection, identity, controller.signal);
       } catch (error) {
-        controller.signal.throwIfAborted();
-        if (attempt !== 0 || !(error instanceof Error) || !/timeout|timed out|disconnected|bridge exited/i.test(error.message)) throw error;
+        // Preserve an uncertain deletion result when cancellation follows the write.
+        if (retry) controller.signal.throwIfAborted();
+        if (!retry || attempt !== 0 || !(error instanceof Error) || !/timeout|timed out|disconnected|bridge exited/i.test(error.message)) throw error;
       } finally {
         controller.signal.removeEventListener('abort', abort);
         await connection.close();
@@ -65,6 +66,9 @@ async function withDevice<T>(operation: (connection: PlaudConnection, identity: 
     throw new Error('Plaud connection failed after one fresh retry');
   } finally { active = null; }
 }
+
+export const withPlaudDeletionDevice: import('./plaud-delete').DeletionConnection = operation =>
+  withDevice((connection, identity, signal) => operation(connection, identity.serial, signal), false);
 
 export async function readDirectPlaudRecordings() {
   return withDevice(async (connection, identity) => ({ serial: identity.serial,
@@ -133,7 +137,7 @@ export async function importDirectPlaudRecording(sessionId: number, onProgress?:
       const durationMs = Math.round(duration * 1000);
       const provenance = JSON.stringify({
         serial: identity.serial, session: selected, sourceTransport: 'ble', sourceRetained: true,
-        originalSha256: await fingerprintFile(encryptedPath), integrity: decoded.integrity,
+        originalSha256: await fingerprintFile(encryptedPath), playbackSha256: await fingerprintFile(playbackPath), integrity: decoded.integrity,
         tailCrc: downloaded.tailCrc, tailChecksum, durationMs, downloadedAt: new Date().toISOString(),
       });
       // Device bytes, decoded audio and provenance are staged with the playback copy and become

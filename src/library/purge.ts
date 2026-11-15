@@ -1,3 +1,4 @@
+import { withRecordingLease } from './recording-lease';
 import type { Database } from 'bun:sqlite';
 import { existsSync, readdirSync } from 'node:fs';
 import { rm, unlink } from 'node:fs/promises';
@@ -71,7 +72,12 @@ export function recordingFiles(recording: Pick<RecordingRow, 'id' | 'filePath' |
   return files;
 }
 
-export async function purgeRecordingData(database: Database, recordingId: string, options: {
+export async function purgeRecordingData(database: Database, recordingId: string,
+  options: Parameters<typeof purgeRecordingDataUnlocked>[2] = {}): Promise<PurgeReport | null> {
+  return withRecordingLease(recordingId, () => purgeRecordingDataUnlocked(database, recordingId, options));
+}
+
+async function purgeRecordingDataUnlocked(database: Database, recordingId: string, options: {
   libraryDirectory?: string; reason?: PurgeContext['reason']; requireTrash?: boolean; now?: Date;
 } = {}): Promise<PurgeReport | null> {
   const recording = loadRecording(database, recordingId);

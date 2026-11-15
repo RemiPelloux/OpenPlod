@@ -1,3 +1,6 @@
+import { VerifiedPlaudDeletion } from '../sync/plaud-delete';
+import { withPlaudDeletionDevice } from '../sync/plaud-direct';
+import { principalOf } from './access';
 import type { PlaudImportProgress } from '../sync/plaud-progress';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -82,6 +85,27 @@ app.get('/device-recordings', async c => {
   } catch (error) {
     return c.json({ success: false, error: error instanceof Error ? error.message : 'Device recording list unavailable', recordingCount: null }, 503);
   }
+});
+
+const deviceDeletion = new VerifiedPlaudDeletion(sqlite, withPlaudDeletionDevice);
+app.use('/device-delete/*', async (c, next) => {
+  c.header('Cache-Control', 'no-store');
+  if (!localOwner(c) || principalOf(c)?.kind !== 'desktop') {
+    return c.json({ success: false, error: 'Device deletion requires the paired desktop on this computer.' }, 403);
+  }
+  return next();
+});
+app.post('/device-delete/prepare', async c => {
+  try {
+    const body = await c.req.json();
+    return c.json({ success: true, data: await deviceDeletion.prepare(body.recordingId, body.sessionId) });
+  } catch (error) { return c.json({ success: false, error: error instanceof Error ? error.message : 'Backup verification failed.' }, 409); }
+});
+app.post('/device-delete/confirm', async c => {
+  try {
+    const body = await c.req.json();
+    return c.json({ success: true, data: await deviceDeletion.confirm(body.token, body.confirm === true) });
+  } catch (error) { return c.json({ success: false, error: error instanceof Error ? error.message : 'Device deletion failed.' }, 409); }
 });
 
 app.post('/device-import', async c => {
