@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 - 2026-11-15
 
-1.1.0 Sprint 1: performance and housekeeping. See the [sprint plan and outcome](docs/sprint-1.1.0-1.md).
+Performance and housekeeping (1.1.0 Sprint 1). See the [sprint plan and outcome](docs/sprint-1.1.0-1.md).
 
 ### Changed
 

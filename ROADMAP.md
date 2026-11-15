@@ -202,7 +202,7 @@ in [docs/impl-notes](docs/impl-notes).
 
 ## After 1.0: 1.1.0 Sprints
 
-> **1.1.0 Sprint 1 (implemented 2026-11-13).** See the [1.1.0 Sprint 1 plan and outcome](docs/sprint-1.1.0-1.md).
+> **1.1.0 Sprint 1 (implemented 2026-11-13, released in 1.1.0 on 2026-11-15).** See the [1.1.0 Sprint 1 plan and outcome](docs/sprint-1.1.0-1.md).
 > Performance and housekeeping. N+1 queries are removed from list endpoints (PERF-01), with
 > query-count regression tests. Webhook delivery history is pruned after 90 days (PERF-02). The
 > Ollama availability check is cached (PERF-03). Legacy settings save in one transaction

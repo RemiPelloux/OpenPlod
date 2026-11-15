@@ -4,9 +4,9 @@
 
 <h1 align="center">OpenPlod</h1>
 <p align="center"><strong>Local-first Plaud Note Pro recording vault, transcription, and Markdown workspace.</strong></p>
-<p align="center">Import directly over Bluetooth. Keep your original audio. Turn recordings into structured documents and source-linked AI conversations.</p>
+<p align="center">Import over Bluetooth. Keep your original audio. Turn recordings into documents and source-linked AI conversations.</p>
 <p align="center">
-  <a href="https://github.com/RemiPelloux/OpenPlod/releases/tag/v1.0.0"><img alt="Release 1.0.0" src="https://img.shields.io/badge/release-1.0.0-3975EE?style=flat-square" /></a>
+  <a href="https://github.com/RemiPelloux/OpenPlod/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/RemiPelloux/OpenPlod?style=flat-square&color=3975EE" /></a>
   <a href="https://github.com/RemiPelloux/OpenPlod/actions/workflows/ci.yml"><img alt="CI source checks" src="https://github.com/RemiPelloux/OpenPlod/actions/workflows/ci.yml/badge.svg" /></a>
   <img alt="macOS, Linux and Windows desktop" src="https://img.shields.io/badge/desktop-macOS%20%7C%20Linux%20%7C%20Windows-111113?style=flat-square" />
   <a href="docs/mcp.md"><img alt="MCP read-only by default" src="https://img.shields.io/badge/MCP-read--only%20by%20default-197A68?style=flat-square" /></a>
@@ -14,269 +14,129 @@
   <a href="https://github.com/sponsors/RemiPelloux"><img alt="Sponsor Remi Pelloux" src="https://img.shields.io/badge/Sponsor-Remi%20Pelloux-DB2777?style=flat-square" /></a>
 </p>
 <p align="center">
+  <a href="#download">Download</a> &middot;
   <a href="docs/getting-started.md">Get started</a> &middot;
-  <a href="#get-recordings-from-plaud">Plaud connection</a> &middot;
+  <a href="#get-recordings-from-plaud">Plaud</a> &middot;
   <a href="#android-companion">Android</a> &middot;
-  <a href="ROADMAP.md">Roadmap</a> &middot;
   <a href="docs/api.md">API</a> &middot;
   <a href="docs/mcp.md">MCP</a> &middot;
-  <a href="CHANGELOG.md">Changelog</a> &middot;
-  <a href="#sponsor-and-support">Sponsor</a> &middot;
-  <a href="https://github.com/RemiPelloux/OpenPlod/issues">Report an issue</a>
+  <a href="ROADMAP.md">Roadmap</a> &middot;
+  <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-OpenPlod brings recording, playback, transcription, and export into one desktop-first workspace. The desktop app owns the durable audio vault on macOS, Linux, and Windows; the Android companion pairs over your private network and can extract directly from an enrolled Note Pro. Keep recordings on your Plaud, keep a copy on your computer, and work with transcripts as documents.
-
-> [!IMPORTANT]
-> **1.0.0 implements the whole 1.0 roadmap, with documented support boundaries.** Direct Bluetooth extraction has been verified on one authorized Plaud Note Pro; other devices and firmware are not established, and the recorder still refuses audio until this computer holds a Plaud-minted identity. Provider, connector, and Android paths are covered by automated tests but were not exercised against live accounts or a physical phone for this release, and release signing needs your keys. The vault, microphone, imports, transcripts, profiles, documents, automation, and backups work without a Plaud identity. See the [1.0.0 status](ROADMAP.md#100-status).
+OpenPlod is a desktop app for macOS, Linux, and Windows that keeps your recordings in a local
+vault, transcribes them with the provider you choose (or fully locally), and turns transcripts into
+Markdown documents. An Android companion pairs over your private network and can pull audio
+straight from an enrolled Note Pro.
 
 ![OpenPlod desktop recording library in dark mode; private titles are redacted](docs/images/recording-library.png)
 
-*Actual application and local vault, with the Export tab selected. Private recording titles and tags are masked; no mock records or fabricated processing results are shown.*
+> [!IMPORTANT]
+> **Plaud extraction needs an authorized device.** Direct Bluetooth download is verified on one
+> Plaud Note Pro, and the recorder refuses audio until this computer holds a Plaud-minted identity
+> ([device authorization](#device-authorization)). Everything else (vault, microphone, file imports,
+> transcription, documents, automation, backups) works without one. Live-provider, Android-phone,
+> and signing checks that only an owner can run are listed in the [roadmap status](ROADMAP.md#100-status).
 
-## New in 1.0.0
+## Features
 
-**Transcription profiles — tell the model what it is listening to.** A profile is a context prompt and
-a vocabulary for one kind of recording, optionally pinned to a provider, model, and language. Start
-from eight presets (Team meeting, Réunion en français, Medical consultation, Legal discussion,
-Lecture, Interview, Engineering standup, Customer call) or write your own, set one as the default, and
-pick another per recording in the Transcribe dialog, where you can also add one-off context ("Dr
-Martin and a patient discuss amoxicillin").
+- **Audio vault.** Bluetooth import from Plaud, microphone capture, file imports, and phone
+  transfers. Originals are kept with fingerprints and provenance; Trash keeps items for 30 days.
+- **Transcription.** Mistral Voxtral, local whisper.cpp, Deepgram, OpenAI, and AssemblyAI, with
+  fallback order, spending limits, and automatic splitting of long recordings.
+  **Transcription profiles** add a context prompt and vocabulary for each kind of recording.
+- **Transcript Studio.** Speaker and segment editing, word-level version diffs, AI cleanup you
+  review before saving, chapters, decisions and action items, subtitles, and PDF export.
+- **Documents.** Generate notes, minutes, briefs and more from a transcript, review the Markdown,
+  and save it with links back to the source. Folders, tags, saved views, backlinks, and history.
+- **AI chat over your recordings.** Answers cite exact quotes with timestamps and transcript
+  versions. Hybrid search with local embeddings.
+- **Automation.** Signed webhooks, opt-in rules ("Plaud meeting → transcribe → minutes → folder"),
+  task exports to Todoist, Linear, Notion, or calendar files, and one-way Obsidian export.
+- **Safety.** Crash-safe imports, encrypted full-vault backups with a restore wizard, secrets
+  encrypted at rest, and **Local only** mode that blocks every cloud call.
+- **Integrations.** A versioned [REST API](docs/api.md) and a [read-only-by-default MCP server](docs/mcp.md).
+- **English and French** interface, light and dark themes, keyboard navigation, ⌘K command palette.
 
-| Provider | Context prompt | Vocabulary | How it is sent |
-| --- | --- | --- | --- |
-| OpenAI (`whisper-1`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`) | Yes | Yes | `prompt` |
-| whisper.cpp (local) | Yes | Yes | `--prompt`, with a glossary line |
-| Deepgram (Nova-2, Nova-3) | No | Yes | `keywords` (Nova-2), `keyterm` (Nova-3) |
-| AssemblyAI | No | Yes | `word_boost` |
-| Mistral Voxtral | No | No | — |
-
-A profile written for any provider leaves out what the chosen one cannot take, tells you before the
-job runs, and records it in the transcript's provenance. A profile never rewrites text.
-
-**A guided first run.** A five-step setup guide: local-only or chosen providers, a transcription
-model and key with a connection check, a profile, and where to bring recordings in from. Skip it,
-or run it again from Settings or the command palette. See [Getting started](docs/getting-started.md).
-
-**Also in 1.0.0: the rest of the roadmap.**
-
-- **AI providers:**
-  - Spending limits with estimates and confirmation.
-  - Long recordings split and merged automatically.
-  - Gemini and a restricted OpenAI-compatible endpoint.
-  - Fallback order per task, and provenance for every summary and document.
-- **Transcript Studio:**
-  - Saved chapters, decisions and action items.
-  - Server-side PDF export.
-  - Batch document generation.
-  - Side-by-side comparison of two transcription providers.
-- **Knowledge:**
-  - Recording collections.
-  - Export attachments and a folder picker.
-  - Pinned chat sources, project context and suggested follow-ups.
-  - Hybrid search with local embeddings, plus recording title, tag and topic suggestions.
-- **Automation:**
-  - Signed webhooks, with retries and full history.
-  - Opt-in rules ("Plaud meeting → transcribe → minutes → folder"), with preview and history.
-  - Reviewed task exports to Todoist, Linear, Notion or calendar files.
-- **Android and sync:**
-  - Separate credentials for each paired phone, with revocation.
-  - Resumable uploads and an offline outbox.
-  - A sync change feed with conflict detection.
-  - Release signing from your own keystore.
-- **Safety:**
-  - Crash-safe imports and complete purge.
-  - Encrypted full-vault backups with a restore wizard.
-  - Keys and secrets encrypted at rest, and an auto-updater.
-  - A 10,000-recording benchmark.
-- **French and English** throughout, and automated accessibility checks.
-- **Smaller additions:** a ⌘K command palette with quick actions, AI title and tag suggestions for
-  documents, and the 0.7.0 knowledge workspace (tags, saved views, backlinks, Obsidian export,
-  conversation management).
-
-Every item is listed in the [changelog](CHANGELOG.md#100---2026-10-15).
-
-## Previously in 0.6.0
-
-**Transcript Studio** — a new Studio mode on the recording page, with five tabs:
-
-- **Edit** — speaker rename/merge, segment split/merge, and find/replace with match-case, whole-word
-  and per-speaker scoping. Preview before applying; undo restores the previous version.
-- **Versions** — a word-level diff that labels each change as your correction, a regeneration, your
-  own revision, or model output replacing your edit. Promotion never discards the replaced version.
-- **AI cleanup** — punctuation, paragraphs, optional filler removal and headings, shown as a diff and
-  saved only when you accept. Translation is stored as its own lineage and never replaces the original.
-- **Structure** — chapters, decisions, action items and open questions, with SRT/VTT subtitles and
-  Markdown, CSV, JSON and print-ready exports.
-- **Actions** — save an instruction once and re-run it on any transcript.
-
-Also: playback following with word-level highlighting where a provider supplies word timings, seven
-document templates (notes, meeting minutes, interview, lecture, brief, PRD, follow-up email), and
-batch transcription with per-item status, cancellation and retry-failed-only.
-
-**What it refuses to do is the point.** Models are never allowed to emit a timestamp — they cite a
-segment index and the time is read from your own data, so an invented citation produces no link
-rather than a convincing-looking time. An unstated owner or due date stays unknown instead of being
-guessed. Subtitles are refused, with the reason, when a provider returned no real timing. Nothing is
-written on a first click, and a batch tells you what it will run before it runs it.
-
-**Not verified:** the 0.6.0 exit gate — real-audio acceptance across multiple speakers, French and
-English, silence, noise and a long recording — has not been run, and no AI path has been exercised
-against a live provider. See the [0.6.0 changelog](CHANGELOG.md#060---2026-09-21) for the full list.
-
-Earlier releases (0.5.1 cross-platform Bluetooth, 0.5.0 multi-provider AI, 0.4.x workspace) are described in the [changelog](CHANGELOG.md).
-
-## Beyond 1.0.0
-
-Every roadmap item is implemented. The [1.0.0 status](ROADMAP.md#100-status) lists the evidence
-that only a device owner can add: real-audio runs with live provider accounts, a physical Android
-phone, one real Plaud capture to confirm the transfer checksum, signing keys, and the benchmark on
-the reference Mac. After 1.0: live captions, two-way Obsidian sync, more Plaud models, and iOS.
-
-**In progress: 1.1.0.** [Sprint 1](docs/sprint-1.1.0-1.md) is implemented and unreleased. List endpoints and mobile sync
-pages now run a fixed number of database queries, whatever their size. Webhook history is pruned
-after 90 days. Search no longer waits on a stopped Ollama. Settings save in one transaction, and
-dependencies are up to date. See the [changelog](CHANGELOG.md#unreleased).
+**New in 1.1.0:** faster list endpoints and mobile sync (a fixed number of queries per page),
+webhook history pruned after 90 days, search no longer waits on a stopped Ollama, settings save in
+one transaction, and updated dependencies. See the [changelog](CHANGELOG.md#110---2026-11-15).
 
 ## Download
 
+Get the installers from the **[latest release](https://github.com/RemiPelloux/OpenPlod/releases/latest)**.
+
 | Platform | Package | Notes |
 | --- | --- | --- |
-| macOS Apple Silicon | [OpenPlod_1.0.0_aarch64.dmg](https://github.com/RemiPelloux/OpenPlod/releases/download/v1.0.0/OpenPlod_1.0.0_aarch64.dmg) | Built by CI. Ad-hoc signed and not notarized until signing secrets are configured. |
-| Windows x64 | [Installer (.exe)](https://github.com/RemiPelloux/OpenPlod/releases/download/v1.0.0/OpenPlod_1.0.0_x64-setup.exe) or [.msi](https://github.com/RemiPelloux/OpenPlod/releases/download/v1.0.0/OpenPlod_1.0.0_x64_en-US.msi) | Built by CI, unsigned. Bluetooth extraction on Windows is not verified on hardware. |
-| Linux x64 | [.deb](https://github.com/RemiPelloux/OpenPlod/releases/download/v1.0.0/OpenPlod_1.0.0_amd64.deb) or [.rpm](https://github.com/RemiPelloux/OpenPlod/releases/download/v1.0.0/OpenPlod-1.0.0-1.x86_64.rpm) | Built by CI. Declares its BlueZ, D-Bus, and ffmpeg dependencies. |
-| Android ARM64 | [Build instructions](#android-companion) | Native, SDK-free direct Bluetooth adapter. Release signing uses your own keystore; no public APK. |
-| Source | [v1.0.0 source and release notes](https://github.com/RemiPelloux/OpenPlod/releases/tag/v1.0.0) | Frontend, backend, native adapters, API, MCP, and tests. |
+| macOS Apple Silicon | `.dmg` | Ad-hoc signed, not notarized: approve it in Privacy & Security. |
+| Windows x64 | `.exe` or `.msi` | Unsigned. Bluetooth extraction not verified on Windows hardware. |
+| Linux x64 | `.deb` or `.rpm` | Declares BlueZ, D-Bus, and ffmpeg dependencies. |
+| Android ARM64 | [Build it](#android-companion) | No public APK; sign with your own keystore. |
 
-Download `SHA256SUMS.txt` from the same release and verify your download with `shasum -a 256 -c SHA256SUMS.txt --ignore-missing`. On macOS, open the DMG and drag `OpenPlod.app` to Applications. macOS may require explicit approval in Privacy & Security because the build is not notarized. Verify the source and checksum before approving it; do not disable Gatekeeper system-wide.
+Verify downloads with `SHA256SUMS.txt` from the same release:
+`shasum -a 256 -c SHA256SUMS.txt --ignore-missing`.
 
-**Upgrade safely:** quit OpenPlod, back up the full vault, and replace only the application bundle. Do not delete its Application Support directory. Android development updates use an in-place install with the same application ID and signing key; uninstalling first can erase phone-local data.
+**Upgrading:** quit OpenPlod, back up the vault, and replace only the app. Never delete the vault
+directory. See [upgrade and migration](docs/upgrade-and-migration.md).
 
-## From Audio to a Document
+## Build From Source
 
-1. **Capture or import.** Record in OpenPlod, import an audio file, transfer from the paired phone, or use **Get from Plaud** with an authorized Note Pro.
-2. **Keep a durable copy.** OpenPlod stores the audio in the desktop vault before acknowledging a mobile transfer. Direct Plaud imports retain the source session on the device.
-3. **Transcribe.** Select a speech provider and, optionally, a transcription profile in Settings or the recording's Transcribe dialog. Choose from Mistral, local whisper.cpp, Deepgram, OpenAI, and AssemblyAI. Processing failure does not delete the recording.
-4. **Create a document.** Open a transcript, select **Create document**, choose structured notes, meeting minutes, or a project brief, and add optional instructions.
-5. **Review and organize.** Your selected document provider returns Markdown for review. Saving creates an independent document with source references; move it into a folder, edit it, or restore a prior revision.
-6. **Export or connect.** Download Markdown/JSON, send a saved document to a configured destination, or let a trusted MCP client read it.
-
-The source transcript, generated document, and original audio are separate resources. Editing the document does not rewrite the source recording.
-
-## What You Can Do
-
-- **Get recordings from Plaud.** Open **Get from Plaud** in Library or New Recording, connect, select recordings, and import them. Filter New/Saved, sort by size, cancel the remaining batch, retry, restore a saved item from Trash, or open it in the library.
-- **Keep your audio.** Import files, capture microphone audio, or receive recordings from the paired mobile app. The vault tracks stable recording IDs, content fingerprints, and source provenance.
-- **Work in Markdown.** Browse the Transcripts tab, read and edit documents, inspect generated and manual versions, and export Markdown, plain text, or JSON. Reprocessing adds a generated version without silently replacing a manual edit.
-- **Organize your notes.** Create nested folders in Notes, import Markdown files, edit/preview documents, star notes, restore history, and recover notes from Trash. Use **Create document** on a transcript to generate structured notes, meeting minutes, or a project brief with your selected document provider, review the Markdown, and save it with source provenance.
-- **Connect your tools.** Use the [versioned REST API](docs/api.md) and [read-only-by-default MCP server](docs/mcp.md). Send saved documents to explicitly configured webhook destinations, or export/share Markdown using the native platform controls.
-- **Listen and organize.** Play and seek audio, rename recordings, edit metadata, tags, context, and notes, and use Trash to restore deleted items during the 30-day retention period.
-- **Choose processing.** Configure speech and text providers separately, with explicit fallback and local-only options. See [provider support and limits](docs/ai-providers.md). Optional OpenWhistle forwarding is blocked in local-only mode.
-- **Use the same workspace on Android.** QR pairing, microphone capture, audio share/import, transcript views, and the shared Plaud import dialog are included. Mobile transfers retain local audio until the desktop acknowledges storage.
-
-The shared React interface uses shadcn-style Radix controls, original custom SVG icons, light/dark themes, accessible dialogs, keyboard navigation, a real audio timeline, and reduced-motion support. **Recordings**, **Transcripts**, and **Documents** are separate workspaces rather than competing status tabs.
-
-![OpenPlod Plaud Device page showing truthful unknown device status, two saved recordings, and import preferences](docs/images/plaud-workspace.png)
-
-*Real local-vault capture. Bluetooth was not connected during this UI check, so device counts are shown as unknown, not invented.*
-
-## Current Support
-
-| Capability | Status in 1.0.0 (hardware evidence from 0.5.x unless noted) |
-| --- | --- |
-| macOS desktop vault | Built and tested on Apple Silicon |
-| Linux desktop vault | Builds and runs on Arch/Omarchy (Hyprland); BLE discovery and connection verified against a real Note Pro over BlueZ |
-| Mac / Linux -> Note Pro Bluetooth download | Real recording listed, downloaded, decoded, imported, and played on macOS; the same bridge transport runs on Linux |
-| Account-free initial authorization | Not verified; the successful test used existing account authorization for device keys |
-| Android -> Note Pro | Direct encrypted Bluetooth listing, download, playable Opus, and source retention verified on one authorized Note Pro |
-| Android device authorization | One-time encrypted enrollment approved on the already-authorized Mac; subsequent extraction works without the Mac |
-| Android native-library alignment | APK ZIP and ARM64 libraries pass 16 KB alignment checks; runtime on a 16 KB device still unverified |
-| Windows desktop vault | The bridge builds for WinRT, but extraction is not verified on hardware |
-| iOS direct extraction | Not supported; only the macOS, Linux, and Android clients talk to the device directly |
-| Signed store-ready distribution | Not available; Mac ZIP is ad-hoc signed and not notarized |
-
-## Get Started
+You need [Bun](https://bun.sh), [Rust](https://rustup.rs), the
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform, and `ffmpeg`
+and `ffprobe` on the app's `PATH`.
 
 ### Build the Mac App
 
-Install [Bun](https://bun.sh), [Rust](https://rustup.rs), Apple's Xcode Command Line Tools, and the [Tauri macOS prerequisites](https://v2.tauri.app/start/prerequisites/). Direct extraction also needs `ffmpeg` and `ffprobe` available to the app process; these are not bundled. Since 0.5.1 the bundled `plaud-bridge` binary handles CoreBluetooth, so `swift` is no longer required at runtime.
-
 ```bash
-xcode-select --install
-brew install ffmpeg
-
-git clone https://github.com/RemiPelloux/OpenPlod.git
-cd OpenPlod
-bun install --frozen-lockfile
-bun install --cwd web --frozen-lockfile
+xcode-select --install && brew install ffmpeg
+git clone https://github.com/RemiPelloux/OpenPlod.git && cd OpenPlod
+bun install --frozen-lockfile && bun install --cwd web --frozen-lockfile
 bun run install:mac --launch
 ```
 
-Quit OpenPlod before updating. The installer builds and verifies the app, replaces `/Applications/OpenPlod.app`, and archives generated duplicate bundles so macOS has one launch target. Recoverable ZIP backups and their manifest are kept in `~/Library/Application Support/OpenPlod-install-archives/`; recordings in the vault are not modified. The sidebar and **Settings > About OpenPlod** show the build date. This build is ad-hoc signed, not notarized. Grant Bluetooth access when macOS asks; microphone capture needs its own permission.
-
-For a build without installation, use `bun run tauri:build --bundles app`. To install that build without rebuilding, use `bun run install:mac --no-build --launch`.
-
-The native app starts its own Bun service on port **3487**. Do not run a second backend on that port at the same time.
+The installer builds, verifies, and replaces `/Applications/OpenPlod.app`, archiving old copies in
+`~/Library/Application Support/OpenPlod-install-archives/`. Grant Bluetooth access when asked.
 
 ### Build the Linux App
 
-The desktop vault and its Bluetooth bridge build on Linux. Install [Bun](https://bun.sh), [Rust](https://rustup.rs), the [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/) (`webkit2gtk-4.1`, `javascriptcoregtk-4.1`, `libsoup-3.0`, `gtk+-3.0`, `librsvg`), plus `ffmpeg`, `ffprobe`, `bluez`, and `dbus`.
+Also install `bluez` and `dbus`.
 
 ```bash
-git clone https://github.com/RemiPelloux/OpenPlod.git
-cd OpenPlod
-bun install --frozen-lockfile
-bun install --cwd web --frozen-lockfile
+git clone https://github.com/RemiPelloux/OpenPlod.git && cd OpenPlod
+bun install --frozen-lockfile && bun install --cwd web --frozen-lockfile
 bun run tauri build --no-bundle
 ./src-tauri/target/release/openplod
 ```
 
-`bun run build:sidecar` compiles both the Bun service and the cross-platform `plaud-bridge` (Rust + [`btleplug`](https://github.com/deviceplug/btleplug)) into `src-tauri/binaries/`. At runtime the app points the service at the bridge with `OPENPLOD_BLE_BRIDGE`; the same binary is used on macOS and Windows. Bluetooth goes through BlueZ, so the user must be able to reach the system bus (a normal desktop session already can).
+The app runs its own Bun service on port **3487** and a Rust `plaud-bridge`
+([`btleplug`](https://github.com/deviceplug/btleplug)) for Bluetooth on every desktop platform.
 
 ### Check Your Setup
 
-Direct transfer needs five separate things to be true. `bun run doctor` checks each one and names the fix for your platform:
-
 ```bash
-bun run doctor          # readable report; exits non-zero when something blocks transfer
-bun run doctor --json   # same report as JSON, for bug reports
-bun run device:doctor   # the bridge's own host check, without the vault
-bun run device:scan     # scan for an advertising recorder
+bun run doctor          # what blocks Plaud transfer, with the fix for your platform
+bun run doctor --json   # the same report, for bug reports
+bun run device:scan     # look for an advertising recorder
 ```
 
-```
-OpenPlod host check — linux x64 (7.2.3-arch1-3)
-Bluetooth backend: bluez · bridge: native
-Adapter: hci0 (usb:v1D6Bp0246d0557)
+The same report is in the **This computer** panel on the Plaud page.
 
-  ok  Desktop platform: linux x64 — Bluetooth via bluez.
-  ok  Bluetooth bridge: plaud-bridge found at src-tauri/plaud-bridge/target/release/plaud-bridge.
-  ok  Bluetooth adapter: Bluetooth adapter is available and powered on.
-  ok  Audio tools: ffmpeg and ffprobe are installed.
- !!  Recorder authorization: No recorder identity at data/plaud-device.json.
-       → Authorize this recorder with a Plaud sign-in token on the Plaud connection page.
-```
+## Get Recordings From Plaud
 
-The desktop app shows the same report in the **This computer** panel on the Plaud page, and `GET /api/plaud/environment` returns it as JSON.
+1. Authorize the Note Pro for this computer (see below).
+2. Wake the recorder near your computer and disconnect other Bluetooth clients.
+3. Open **Library** or **New Recording** → **Get from Plaud** → **Connect**.
+4. Select recordings and **Import**, then play, transcribe, or export them.
 
-### Get Recordings From Plaud
+Audio goes straight from the device over Bluetooth, never through Plaud's cloud. Each transfer is
+checked (framing, size, decryption, Ogg integrity, playable duration), device bytes and decoded
+audio are kept next to an M4A playback copy, and the recording stays on the Plaud. The extraction
+commands exclude force-clear, ownership reset, and file deletion.
 
-1. Authorize the Note Pro for this computer. The current adapter reads a private `plaud-device.json` from the vault directory; see [device authorization](#device-authorization).
-2. Wake the Plaud and keep it near your computer. Disconnect other clients that may be holding its Bluetooth connection.
-3. Open **Library** or **New Recording**, then **Get from Plaud**.
-4. Select **Connect** to read the actual device list. A failed or unavailable query is an error, not a claim that there are zero recordings.
-5. Select completed recordings and choose **Import**. Progress counts completed recordings, not transferred bytes.
-6. Open the saved recording to play it, edit its details, transcribe it, or export a document.
+### Device Authorization
 
-Audio travels directly from the device over Bluetooth. The verified extraction did **not** download audio from Plaud's cloud or transfer it through a phone. The adapter checks transfer framing, size, authenticated decryption, decoded Ogg integrity, and playable duration. It preserves device bytes and decoded audio alongside an M4A playback copy, then checks that the source session is still listed on the Plaud. The device's transfer-tail checksum is retained but its algorithm is not yet validated.
-
-The extraction command set excludes force-clear, ownership reset, and device-file deletion. The folder-import setting for deleting source files is separate from direct Bluetooth imports.
-
-#### Device Authorization
-
-The successful hardware test used the device owner's existing binding credential and signed identity. **Bluetooth discovery alone does not grant recording access.**
-
-The private identity contains the peripheral identifier, device serial, binding token, signed authorization, and RSA key pair. Its default location is platform-specific:
+Bluetooth discovery does not grant access. The recorder needs a private identity file (binding
+token, signed authorization, RSA key pair) with permissions `0600`:
 
 ```text
 ~/Library/Application Support/com.openplod.vault/plaud-device.json   # macOS
@@ -284,69 +144,51 @@ The private identity contains the peripheral identifier, device serial, binding 
 %APPDATA%/com.openplod.vault/plaud-device.json                       # Windows
 ```
 
-The file must be private to the current user with permissions `0600`. For a source-run backend, `OPENPLOD_DEVICE_IDENTITY` can select an absolute path. The identity is portable: on Linux and Windows the bridge matches the recorder by its advertised Plaud service or name when the stored identifier is a CoreBluetooth UUID that does not appear in the platform's own address space. No identity, account password, embedded vendor secret, or APK is distributed in this repository. Generating a random token or using Android developer credentials does not provision this desktop identity.
+Getting this identity is not yet an in-app flow; the verified test used the owner's existing
+authorization. No identity, vendor secret, or SDK is distributed here. **Do not reset or rebind a
+device** to work around authorization errors.
 
-**Fresh-install limitation:** obtaining this identity is not yet a supported in-app onboarding flow. Until that is implemented, a new user can use the recording vault and file imports but should not expect plug-and-play Plaud extraction. Do not reset or rebind a device to work around authorization errors.
+## Android Companion
 
-### Transcription and Exports
+1. With the desktop app open on a trusted network, scan the pairing QR code from **Settings**.
+2. On the phone's **Plaud** tab, request authorization and approve the matching code on the desktop.
+   The identity is encrypted to the phone and kept in Android Keystore.
+3. Wake the Note Pro beside the phone and choose **Get from Plaud**. Extraction then works without
+   the desktop online; the library, transcripts, and AI still use it.
 
-On first launch the setup guide walks through these choices. Afterwards, in **Settings > AI providers**, select speech and text providers separately, a default transcription profile and context prompt, then choose **Save AI**. Manage profiles under **Settings > Transcription profiles**. Cloud fallback is disabled by default; selecting a fallback authorizes that additional audio destination. **Local only** blocks cloud speech, text analysis, and OpenWhistle forwarding. In-flight cloud requests may already have been received and billed; cancel their jobs separately.
-
-| Provider | Runs where | Setup |
-| --- | --- | --- |
-| Mistral Voxtral | Mistral cloud | API key in Settings or `MISTRAL_API_KEY` |
-| whisper.cpp | Your computer | Install whisper.cpp and configure its model; see [adapter](src/transcription/whisper.ts) |
-| Deepgram | Deepgram cloud | API key; speaker diarization; vocabulary as keywords (Nova-2) or key terms (Nova-3) |
-| OpenAI transcription | OpenAI cloud | `OPENAI_API_KEY`; maximum 25 MB; accepts a context prompt; live acceptance pending |
-| AssemblyAI | AssemblyAI cloud | `ASSEMBLYAI_API_KEY`; asynchronous polling; live acceptance pending |
-| Summaries/documents/chat | Selected Mistral, OpenAI, Anthropic, or local Ollama | Separate provider/model for each task; see [provider setup](docs/ai-providers.md) |
-
-**Create document** uses the selected document provider, optional writing instructions, and a review step before saving. Summaries, documents, and chat share one adapter layer. Legacy `LLM_BASE_URL`, `LLM_MODEL`, and `LLM_API_KEY` are no longer read: choose a supported analysis provider in Settings before running summaries. Cloud transcription sends audio; generation and analysis send transcript text. Neither is part of downloading audio off the Plaud.
-
-Open a recording or the **Transcripts** tab to preview Markdown, edit a transcript, inspect version history, or export Markdown, text, JSON, and library audio. The selected transcript version is included in document exports. For direct Plaud imports, library audio is the M4A playback copy; byte-for-byte device originals live separately under `recordings/originals/`.
-
-### Android Companion
-
-The current development source uses native Android Bluetooth GATT and the verified desktop protocol, without the proprietary Plaud SDK. A real Note Pro returned two sessions; a 6.86-second recording was downloaded, decrypted, retained locally, and played on Android. The source session remained on the device. This is evidence for the tested device/firmware, not universal compatibility.
-
-1. Keep the desktop app open and put both devices on a trusted private network.
-2. Open desktop **Settings** to display the pairing QR code.
-3. Scan it in the Android app. Manual address/token entry is a fallback.
-4. On the phone's **Plaud** tab, request device authorization. Compare the short code and approve it in the Mac's **Devices** screen. The existing owner identity is encrypted to the phone's key and stored using Android Keystore. No rebinding or reset occurs.
-5. Disconnect other Plaud clients, wake the Note Pro beside the **phone**, and select **Get from Plaud**. After enrollment, Bluetooth extraction and local playback do not need the Mac online. The desktop-backed library, transcripts, and AI still need the paired Mac.
-
-Mobile-to-desktop uploads verify fingerprints and retain phone audio until durable acknowledgement. Interrupted network uploads resume from the last confirmed byte, with a SHA-256 check per chunk and on the whole file before the desktop acknowledges it ([mobile sync](docs/mobile-sync.md)). Direct Bluetooth downloads retain partial bytes and resume by offset. Android preserves encrypted device bytes and the decoded original separately, then creates a playback-only Ogg by selecting unchanged Opus pages from Plaud's mixed audio/metadata container.
-
-Optional automatic import runs as a visible Android foreground service while enabled. Desktop automatic import waits for a stable session size before downloading. Both avoid already-imported source IDs and leave originals on the Plaud. Android battery restrictions and process termination can stop background monitoring; unattended restart/boot recovery remains a roadmap item.
-
-To build Android, install JDK 17, Android SDK 36, Android NDK, and the [Tauri mobile prerequisites](https://v2.tauri.app/start/prerequisites/#android). Configure `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_NDK_HOME` for your installation. The verified build used NDK `28.2.13676358`.
+Uploads to the desktop resume after interruptions and are checked with SHA-256 before the phone
+lets go of its copy ([mobile sync](docs/mobile-sync.md)). To build, install JDK 17, Android SDK 36,
+and the NDK, then:
 
 ```bash
 bun run tauri android build --debug --target aarch64 --apk --ci
-bun run check:android
+bun run check:android   # 16 KB alignment checks
 ```
 
-The debug APK is produced under `src-tauri/gen/android/app/build/outputs/apk/universal/debug/`. Current builds do not fetch or package `plaud-sdk.aar`; the old fetch script remains historical tooling only. The new APK contains one ARM64 native library, with verified 16 KB ZIP and ELF alignment. Fresh-owner provisioning still requires a valid existing owner identity; do not reset device ownership as a workaround.
+## Transcription and AI
 
-### Recording AI and Playback
+Pick speech and text providers separately in **Settings > AI providers**, or in the first-run
+guide. Cloud fallback is off by default. **Local only** uses whisper.cpp and Ollama and blocks
+every cloud request.
 
-The **AI** tab accepts up to 12 selected recordings with saved transcripts. After explicit consent, the selected chat provider answers using only that selected context. Answers are saved with provider/model provenance, activity stages, exact-quote source references, transcript version IDs, and timestamp links where available. Open, rename, or archive previous conversations, and export a single answer or the whole conversation (Markdown or JSON, with each quote resolved to its recording, timestamp, and transcript version). Oversized context, missing credentials, invalid citations, and deleted sources produce errors instead of placeholder answers.
+| Provider | Runs | Profile hints |
+| --- | --- | --- |
+| Mistral Voxtral | Cloud | None |
+| whisper.cpp | Your computer | Prompt and vocabulary |
+| OpenAI (`whisper-1`, `gpt-4o-transcribe`) | Cloud | Prompt and vocabulary |
+| Deepgram (Nova-2, Nova-3) | Cloud | Vocabulary |
+| AssemblyAI | Cloud | Vocabulary |
+| Documents, summaries, chat | Mistral, OpenAI, Anthropic, Gemini, or local Ollama | — |
 
-Recording detail includes 0.75x to 2x playback, timestamp bookmarks, and segment corrections with speaker-label editing. Corrections create a new user-edited transcript version and preserve supplied timing; generated versions remain separate. Untimed text is never presented with fabricated timestamps.
+Hints a provider cannot take are skipped, shown before the job runs, and recorded in the
+transcript's provenance. Cloud transcription sends audio; documents and chat send transcript text.
+Setup and limits: [AI providers](docs/ai-providers.md), [privacy and cost](docs/provider-privacy-and-cost.md).
 
 ## API and MCP
 
-OpenPlod is both a local application and an automation endpoint. The backend remains the single owner of persisted documents; clients do not open the SQLite database directly.
-
-| Interface | Use it for | Default boundary |
-| --- | --- | --- |
-| [REST API](docs/api.md) | Folder/document CRUD, tags, properties, and saved views, revisions, transcript versions and backlinks, processing-job status, generation, exports, and configured delivery | Authenticated `/api/v1` on the desktop service |
-| [MCP server](docs/mcp.md) | Let an assistant browse notes, folders, tags, transcripts, version history, note sources, and job status | Local stdio, read-only by default |
-| MCP write opt-in | Create/edit/move notes and folders; confirmed Trash and restore | `OPENPLOD_MCP_WRITE=1`; no purge, device reset, or external delivery tools |
-| [Webhook destinations](docs/api.md#send-to-a-destination) | Send saved Markdown into your own automation receiver | Owner-configured HTTPS destinations and explicit confirmation |
-| [Markdown folder export](docs/api.md#managed-markdown-export) | Keep an Obsidian vault or any folder in step with your notes, one way | `OPENPLOD_EXPORT_DIR` set by the owner; preview first; files edited elsewhere are never overwritten silently |
-
-For an MCP client installed on the same Mac, configure:
+The desktop service exposes an authenticated `/api/v1` ([REST API](docs/api.md)). The
+[MCP server](docs/mcp.md) runs over local stdio and is read-only unless you set
+`OPENPLOD_MCP_WRITE=1`; even then it has no purge, reset, or external-delivery tools.
 
 ```json
 {
@@ -360,124 +202,75 @@ For an MCP client installed on the same Mac, configure:
 }
 ```
 
-Keep OpenPlod running. On macOS, MCP reads the private pairing-token file automatically; do not paste that token into public configuration. Ask your assistant to find documents, compare decisions, or read a transcript. Its model provider may receive the requested text, so choose the client deliberately. See the [complete MCP setup and tool list](docs/mcp.md).
+## Current Support
+
+| Capability | Status |
+| --- | --- |
+| macOS desktop | Built and tested on Apple Silicon; Plaud download verified on hardware |
+| Linux desktop | Runs on Arch (Hyprland); BLE discovery and connection verified over BlueZ |
+| Windows desktop | Builds; Bluetooth extraction not verified on hardware |
+| Android → Note Pro | Listing, download, and playback verified on one authorized Note Pro |
+| Account-free first authorization | Not implemented |
+| iOS | Not supported |
+| Signed, notarized distribution | Needs signing keys; current builds are unsigned or ad-hoc signed |
+
+Device details: [supported devices](docs/supported-devices.md).
 
 ## Data and Privacy
 
-The native Mac vault is stored at:
+The vault lives in `com.openplod.vault` under your platform's app-data directory: the SQLite
+database, `recordings/` (with `originals/`), the pairing token, and the device identity.
 
-```text
-~/Library/Application Support/com.openplod.vault/
-  openplod.db              Recording metadata, transcripts, versions, settings
-  recordings/             Library audio
-    originals/            Direct-import originals and provenance
-  pairing-token           Private desktop/mobile pairing credential
-  plaud-device.json       Private desktop device identity, when provisioned
-```
-
-- **Back up the entire vault**, not just the app bundle. Quit OpenPlod before making a filesystem copy so SQLite and audio are consistent. Never delete the vault to upgrade the app.
-- **Local storage is not encrypted by OpenPlod.** Protect your OS account, use FileVault where appropriate, and secure backups. API keys are stored locally; Settings returns only whether a key is configured.
-- **Keep the service private.** The native app listens on the LAN for pairing and protects `/api` with its token. LAN HTTP is not end-to-end encrypted. Do not port-forward it or expose it to the public internet; use a trusted network or a separately secured tunnel.
-- **Trash is not device deletion.** Library records can be restored for 30 days. Expired-trash cleanup runs when the backend starts. Original-sidecar cleanup and cross-peer deletion propagation still need hardening; do not treat purge as certified secure erasure.
-- **Do not publish private artifacts.** Credentials, pairing QR codes, vault databases, recordings, SDK binaries, APK snapshots, and local investigation notes are excluded from the source publication.
+- **Back up the whole vault**, ideally with the built-in [encrypted backup](docs/backup-and-restore.md).
+- **Recordings and the database are not encrypted by OpenPlod**; secrets are. Protect your OS
+  account and disk.
+- **Keep the service private.** It listens on the LAN for pairing, protected by a token but over
+  plain HTTP. Do not expose it to the internet.
+- **Trash is not secure erasure**, and deleting in OpenPlod never deletes from the Plaud.
 
 ## Development
 
-The shared frontend is React, TypeScript, Tailwind CSS, Radix UI, and an original SVG icon set. Tauri supplies the native shell. The backend uses Bun, Hono, Drizzle, and SQLite. The Mac transport uses Swift/CoreBluetooth, native RSA, and ChaCha20-Poly1305 session encryption.
-
-```text
-web/src/                 Shared recording, transcript, settings, and import UI
-src/api/                 Recording, mobile, Plaud, and transcript endpoints
-src/library/             Durable imports, provenance, versions, forwarding
-src/sync/                Bluetooth protocol, transport, audio, folder adapters
-src/transcription/       Mistral, Whisper, Deepgram, OpenAI, AssemblyAI adapters
-src/ai/                  Shared settings, capabilities, and text adapters
-src-tauri/               Native shell and platform integrations
-scripts/                 Swift bridge, SDK fetch, build and alignment checks
-```
-
-For browser development, quit the native app first, then use two terminals:
+React, TypeScript, Tailwind, and Radix UI in `web/`; Bun, Hono, Drizzle, and SQLite in `src/`;
+Tauri and Rust in `src-tauri/`. Quit the native app, then:
 
 ```bash
-# Terminal 1: backend at http://127.0.0.1:3487
-bun run dev
-
-# Terminal 2: UI at http://127.0.0.1:5173, proxying /api to the backend
-bun run dev:web
+bun run dev       # backend on http://127.0.0.1:3487
+bun run dev:web   # UI on http://127.0.0.1:5173
+bun run tauri:dev # or the native shell
 ```
 
-The source-run backend defaults to loopback and `./data`; unlike the native app, it does not automatically configure a pairing token. Set `OPENPLOD_PAIRING_TOKEN` before binding it to other interfaces. Use `.env.example` as a reference and keep actual credentials in an ignored `.env` file. For native development, run `bun run tauri:dev` instead of the two-terminal setup.
-
-Docker is available for the web vault and file-based imports via `docker compose up --build` at `http://localhost:3456`. **Docker on macOS does not provide the native CoreBluetooth extraction route.** Its default published port is not a public deployment configuration; restrict access before running it on a shared host.
-
-### Quality Checks
+Before a pull request:
 
 ```bash
-bun test
-bun run typecheck
-bun run --cwd web lint
-bun run build
-bun run tauri:build --bundles app
-
-# After an Android APK build, with ANDROID_HOME configured:
-bun run check:android
+bun test && bun run typecheck && bun run --cwd web lint && bun run build
 ```
 
-The 0.5.0 validation run passed **122 Bun tests (1,076 assertions)**, backend type checking, frontend lint/build, the macOS build, and the Android ARM64 debug build with 16 KB APK/ELF alignment checks. Tests cover protocol framing/encryption/replay handling, transfer checkpoints, authorization envelopes, recording retention, transcript versions, provider contracts/privacy/recovery, AI source boundaries, organizer revisions, MCP access controls, custom SVGs, and audio-loading failures. Fixtures and test doubles are confined to automated tests; production does not fabricate recordings or AI output.
-
-Browser checks use an isolated snapshot of a real local library, not mock API responses. The 0.5.0 checks covered playback, painted-waveform checks, exports, tags, navigation, transcript/chat flows at 320-1440 px, and provider settings persistence, local-only controls, and per-recording consent at 320/390/1440 px. Earlier recording/document checks also covered formatting, outline navigation, and reduced motion up to 1672 px. Native launch and physical-phone installation were not repeated for 0.5.0. No real webhook destination was contacted. UI checks are not device-transfer or provider-generation acceptance.
-
-Earlier live Mistral acceptance used an actual Plaud transcript: generation events, structured French Markdown preview, explicit save, provider/model provenance, and unchanged source transcript passed. Earlier Android hardware acceptance verified direct extraction on one enrolled Note Pro; its SDK-free build passed ZIP/ELF alignment checks. These are historical observations, not fresh provider/hardware acceptance for 0.5.0. New-provider live acceptance remains pending. No Android APK is distributed in this release.
-
-Hardware evidence is separate: one approximately 76-second Note Pro recording was downloaded directly on Mac, decoded, imported, and played, and its source session was still present. This does not establish compatibility across devices or replace interrupted-transfer and fresh-install acceptance. The final installed-phone touch-flow check remains incomplete. See [ROADMAP.md](ROADMAP.md) for outstanding gates.
+Docker (`docker compose up --build`, port 3456) runs the web vault and file imports, without
+Bluetooth. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 
 | Symptom | Check |
 | --- | --- |
-| Plaud is visible but recordings are unavailable | Presence is not authorization. Confirm the private identity, Bluetooth permission, and that another client is not holding the device. |
-| "Authorize this Note Pro on this Mac" | Desktop identity provisioning is incomplete; Android developer credentials are a different route. |
-| Audio verification or conversion fails | Ensure `ffmpeg` and `ffprobe` are accessible to the app process. Finder and terminal environments may differ. Keep the source on the Plaud. |
-| Phone cannot reach the vault | Keep the Mac app open, check the local address/firewall, use the same private network, and rescan the pairing QR. |
-| Transcription fails | Check the selected engine and credentials. A saved recording is retained independently of processing success. |
-| Startup cannot reach the local service | Check for another process on port 3487. Do not run native and development backends together. |
-| Android reports a 16 KB alignment error | Rebuild current sources and run `bun run check:android`; older APKs used an incompatible native encoder. |
-| Several OpenPlod copies or an old-looking interface | Open `/Applications/OpenPlod.app` and check **Settings > About OpenPlod**. Use `bun run install:mac` for source updates; it verifies the new app and archives generated duplicates. |
+| Plaud is visible but recordings are unavailable | Presence is not authorization. Check the identity file, Bluetooth permission, and other connected clients. |
+| Audio verification fails | `ffmpeg` and `ffprobe` must be on the app's `PATH`. |
+| Phone cannot reach the vault | Keep the desktop app open, same private network, check the firewall, rescan the QR code. |
+| App cannot reach its service | Something else is using port 3487, such as a dev backend. |
+| Old-looking interface on macOS | Check **Settings > About OpenPlod**; reinstall with `bun run install:mac`. |
 
-## Contributing
-
-Open an issue with your OS, app version, device model/firmware, reproducible steps, and redacted errors. Clearly distinguish fixtures from actual hardware tests. Do not attach passwords, device identities, private audio, pairing QR codes, or proprietary app files. Keep changes focused and run relevant checks before opening a pull request.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development checklist and [SECURITY.md](SECURITY.md) for private vulnerability reporting. The most useful contributions now are fresh-install desktop authorization, real-device transfer recovery, data-retention hardening, and physical Android acceptance. See the [roadmap](ROADMAP.md) for concrete exit criteria.
+Run `bun run doctor --json` and include it, redacted, when you [open an issue](https://github.com/RemiPelloux/OpenPlod/issues).
+Never attach device identities, private audio, or pairing QR codes.
 
 ## Sponsor and Support
 
-OpenPlod is maintained by [Remi Pelloux](https://github.com/RemiPelloux). Sponsor the work directly through the maintainer's verified GitHub Sponsors page:
-
-[**Sponsor Remi Pelloux on GitHub**](https://github.com/sponsors/RemiPelloux)
-
-Support helps fund test devices, Mac/Android compatibility work, fresh-install onboarding, and signed distribution. Sponsorship does not imply a paid feature tier or a response-time commitment. For collaboration, use the contact channels on [Remi's profile](https://github.com/RemiPelloux). You can also help by starring the repository, documenting reproducible bugs, testing upgrades with backed-up audio, or contributing focused fixes.
-
-## FAQ
-
-**Do I need the official Plaud app to download audio?** The verified desktop transfer itself runs directly over Bluetooth, without a phone relay or cloud audio download. Initial device keys still came from existing owner authorization; self-service provisioning is not implemented.
-
-**Will importing remove the recording from my Plaud?** The direct extraction command set does not delete device sessions. The tested source session remained listed after import. Folder-source cleanup is a separate configurable workflow.
-
-**Is everything local?** Audio retention and the organizer are local. Cloud providers receive audio or transcript text when selected. Choose **Local only** for Whisper.cpp transcription and local Ollama text processing. Both require separately installed local models; remote Ollama models are excluded.
-
-**Can I use Obsidian?** Export Markdown and place it in your Obsidian vault. OpenPlod's folders live in SQLite; there is no automatic bidirectional Obsidian-folder sync.
-
-**Can the phone replace the Mac for Plaud extraction?** Yes, for the tested authorized Note Pro, after one-time encrypted enrollment from the Mac. Audio then travels directly from Plaud to Android. The desktop vault, transcript processing, and AI workspace still use the paired Mac.
-
-**Can I expose the API publicly?** Not with the default LAN configuration. Use a deliberately secured HTTPS deployment and review authentication, storage, and access controls first.
+OpenPlod is maintained by [Remi Pelloux](https://github.com/RemiPelloux).
+[Sponsoring](https://github.com/sponsors/RemiPelloux) funds test devices, compatibility work, and
+signed distribution. It does not buy a paid tier or support guarantees. Stars, bug reports, and
+focused fixes help too.
 
 ## Credits and Licensing
 
-Original OpenPlod contributions are licensed under the [MIT License](LICENSE), including the custom SVG icon set and original brand artwork. Read [LICENSING.md](LICENSING.md) for the scope: dependencies, vendor photographs, and trademarks retain their own terms.
-
-OpenPlod builds on [jddavenportOpen/openplaud](https://github.com/jddavenportOpen/openplaud). Its upstream README declares MIT, but the inherited repository does not include a standalone license file. Upstream authorship and history are preserved; the new OpenPlod license does not independently resolve the missing upstream notice or relicense third-party material.
-
-The previous experimental Android adapter referenced the [Plaud developer SDK](https://github.com/Plaud-AI/plaud-sdk-public). The current direct adapter does not package that SDK. See [third-party notices](THIRD_PARTY_NOTICES.md) for historical and current dependency boundaries.
-
-OpenPlod is an independent project, not affiliated with or endorsed by Plaud. Product names and trademarks belong to their respective owners.
+Original OpenPlod work is [MIT](LICENSE); see [LICENSING.md](LICENSING.md) for scope and
+[third-party notices](THIRD_PARTY_NOTICES.md). OpenPlod builds on
+[jddavenportOpen/openplaud](https://github.com/jddavenportOpen/openplaud), whose history is
+preserved. OpenPlod is independent and not affiliated with or endorsed by Plaud.

@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Implemented 2026-11-13; unreleased, listed under [Unreleased](../CHANGELOG.md#unreleased) |
+| Status | Implemented 2026-11-13; released in [1.1.0](../CHANGELOG.md#110---2026-11-15) on 2026-11-15 |
 | Window | 2026-11-13 to 2026-11-26 (two weeks) |
 | Milestone | 1.1.0 - Performance and housekeeping |
 | Base | 1.0.0 (`d5c2798`) |
