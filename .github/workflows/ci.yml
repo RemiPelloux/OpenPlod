@@ -23,6 +23,8 @@ jobs:
       - run: bun run typecheck
       - run: bun run --cwd web lint
       - run: bun run build
+      - run: bun node_modules/playwright-core/cli.js install --with-deps chromium
+      - run: bun run check:plaud-ui
 
   bridge:
     # The Bluetooth bridge is the one component that must compile per platform,
@@ -45,6 +47,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri/plaud-bridge
+      - name: Unit tests
+        run: cargo test --manifest-path src-tauri/plaud-bridge/Cargo.toml
       - name: Build
         run: cargo build --release --manifest-path src-tauri/plaud-bridge/Cargo.toml
       - name: Lint
@@ -58,3 +62,26 @@ jobs:
           report=$(cargo run --quiet --release --manifest-path src-tauri/plaud-bridge/Cargo.toml -- doctor)
           echo "$report"
           echo "$report" | grep -q '"backend"'
+
+  native-authorization:
+    name: Native authorization (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            src-tauri/plaud-bridge
+      - run: bun install --frozen-lockfile
+      - run: bun install --cwd web --frozen-lockfile
+      - run: bun run build
+      - run: bun run build:sidecar
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: Optimized native transport checks (no network)
+        run: bun run scripts/check-plaud-http.ts src-tauri/binaries/plaud-http-aarch64-apple-darwin

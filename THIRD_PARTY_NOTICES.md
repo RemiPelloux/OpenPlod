@@ -10,6 +10,40 @@ OpenPlod derives from [jddavenportOpen/openplaud](https://github.com/jddavenport
 
 ## Plaud SDK
 
+### Consumer authorization protocol reference
+
+`src/sync/plaud-personal-provision.ts` adapts the consumer endpoints, regional mapping and
+response-envelope format documented by [roopen219/plaude-archiver](https://github.com/roopen219/plaude-archiver),
+revision `e87f345`, specifically `PlaudAPI.swift`, `Crypto.swift` and `LoginWindow.swift`.
+The shared response-envelope constant does not authorize account or device access; a private
+owner account cookie is still required. The reference's MIT notice follows:
+
+```text
+MIT License
+
+Copyright (c) 2026 roopen219
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### SDK distribution boundary
+
 Current Android source no longer depends on or packages this SDK. The direct adapter uses platform Bluetooth/JCA APIs, OkHttp, and Bouncy Castle (`bcprov-jdk18on` 1.80, under its own license). The following records the boundary for historical development builds and the retained optional fetch script.
 
 The Android fetch script pins [Plaud-AI/plaud-sdk-public](https://github.com/Plaud-AI/plaud-sdk-public) at `c5111a44938b8739313dcb5f105f696c6af8ad8d` and verifies the AAR checksum before use.

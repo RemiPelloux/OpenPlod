@@ -145,3 +145,9 @@
   .plaud-authorizations .device-recording-row { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) { .plaud-switch > span { transition: none !important; } }
+
+@media (max-width: 480px) {
+  .plaud-workspace .plaud-import-progress { flex-wrap: wrap; }
+  .plaud-workspace .plaud-import-progress > .plaud-live-progress { flex-basis: 100%; }
+  .plaud-workspace .plaud-import-progress > button { margin-left: auto; }
+}

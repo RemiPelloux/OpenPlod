@@ -1,0 +1,15 @@
+.plaud-live-progress { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; padding: 6px 0; }
+.plaud-progress-ring { position: relative; flex: 0 0 80px; width: 80px; height: 80px; }
+.plaud-live-progress .plaud-progress-ring > svg { width: 80px; height: 80px; display: block; overflow: visible; }
+.plaud-progress-ring circle { fill: none; stroke-width: 5; }
+.plaud-ring-track { stroke: var(--border); }
+.plaud-ring-value { stroke: var(--primary); stroke-linecap: round; transform: rotate(-90deg); transform-origin: 40px 40px; transition: stroke-dashoffset .35s ease; }
+.plaud-ring-value.is-indeterminate { animation: plaud-progress-spin 1.3s linear infinite; }
+.plaud-progress-ring > strong { position: absolute; inset: 0; display: grid; place-items: center; font-size: 18px; font-variant-numeric: tabular-nums; }
+.plaud-progress-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.plaud-progress-copy > strong { font-size: 14px; }
+.plaud-progress-copy > span { font-size: 12px; color: var(--muted-foreground); }
+.plaud-progress-copy > small { font-size: 11px; color: var(--muted-foreground); }
+.plaud-progress-copy > .plaud-resume-note { color: var(--foreground); }
+@keyframes plaud-progress-spin { to { transform: rotate(270deg); } }
+@media (prefers-reduced-motion: reduce) { .plaud-ring-value { transition: none; } .plaud-ring-value.is-indeterminate { animation: none; } }

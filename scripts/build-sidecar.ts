@@ -61,3 +61,11 @@ const bridgeOutput = resolve(outputDirectory, `plaud-bridge-${triple}${suffix}`)
 copyFileSync(bridgeRelease, bridgeOutput)
 if (!suffix) chmodSync(bridgeOutput, 0o755)
 console.log(`[Tauri] Bluetooth bridge ready: ${bridgeOutput}`)
+
+// Foundation transport avoids the macOS Bun TLS/HTTP edge rejection seen in live tests.
+if (triple.endsWith('apple-darwin')) {
+  const nativeOutput = resolve(outputDirectory, `plaud-http-${triple}`)
+  const swift = Bun.spawnSync(['swiftc', '-O', '-module-cache-path', resolve('src-tauri/target/swift-module-cache'), '-target', `${triple.startsWith('aarch64') ? 'arm64' : 'x86_64'}-apple-macos12.0`, 'scripts/plaud-http.swift', '-o', nativeOutput], { stdout: 'inherit', stderr: 'inherit' })
+  if (swift.exitCode !== 0) process.exit(swift.exitCode)
+  chmodSync(nativeOutput, 0o755)
+}

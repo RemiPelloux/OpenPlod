@@ -57,7 +57,7 @@ const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(35);
 /// connect path does.  Anything tighter reports a healthy recorder as
 /// unreachable on the first scan after boot.
 const VERIFY_TIMEOUT: Duration = Duration::from_secs(30);
-const SESSION_DEADLINE: Duration = Duration::from_secs(600);
+const SESSION_IDLE_TIMEOUT: Duration = Duration::from_secs(600);
 const SCAN_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_REQUEST_BYTES: usize = 16 * 1024;
 
@@ -117,6 +117,12 @@ fn normalize_identifier(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
+fn matches_identifier(target: &str, id: &str, address: &str) -> bool {
+    !target.is_empty()
+        && (target == normalize_identifier(id)
+            || (target != "000000000000" && target == normalize_identifier(address)))
+}
+
 fn is_plaud(properties: &PeripheralProperties) -> bool {
     let named = properties
         .local_name
@@ -152,8 +158,11 @@ async fn find_peripheral(
             .await
             .map_err(|error| format!("Bluetooth scan failed: {error}"))?;
         for peripheral in peripherals {
-            if !target.is_empty()
-                && normalize_identifier(&peripheral.address().to_string()) == target
+            if matches_identifier(
+                &target,
+                &peripheral.id().to_string(),
+                &peripheral.address().to_string(),
+            )
             {
                 exact = Some(peripheral);
                 break 'outer;
@@ -241,7 +250,7 @@ async fn run_scan() -> Result<(), String> {
             "detail": "No advertising Plaud found. Wake the device and keep it near this computer.",
         }),
         Some(peripheral) => {
-            let address = peripheral.address().to_string();
+            let address = peripheral.id().to_string();
             let properties = peripheral.properties().await.ok().flatten();
             let name = properties
                 .as_ref()
@@ -402,12 +411,15 @@ async fn run_connect(identifier: String) -> Result<(), String> {
         return Ok(());
     }
 
+    let (activity, mut activity_rx) = tokio::sync::watch::channel(());
+
     // Drain notifications on their own task so commands never block on them.
     match peripheral.notifications().await {
         Ok(mut notifications) => {
             let tx = tx.clone();
             tokio::spawn(async move {
                 while let Some(notification) = notifications.next().await {
+                    activity.send_replace(());
                     let is_packet = notification.uuid == NOTIFY_UUID;
                     emit(
                         &tx,
@@ -451,14 +463,17 @@ async fn run_connect(identifier: String) -> Result<(), String> {
     let mut lines = stdin.lines();
     let mut health = tokio::time::interval(Duration::from_secs(2));
     health.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    let deadline = tokio::time::sleep(SESSION_DEADLINE);
+    let deadline = tokio::time::sleep(SESSION_IDLE_TIMEOUT);
     tokio::pin!(deadline);
 
     loop {
         tokio::select! {
             _ = &mut deadline => {
-                emit(&tx, json!({ "event": "closed", "reason": "session_deadline" }));
+                emit(&tx, json!({ "event": "closed", "reason": "session_idle_timeout" }));
                 break;
+            }
+            Ok(()) = activity_rx.changed() => {
+                deadline.as_mut().reset(tokio::time::Instant::now() + SESSION_IDLE_TIMEOUT);
             }
             _ = health.tick() => {
                 if !peripheral.is_connected().await.unwrap_or(false) {
@@ -469,6 +484,7 @@ async fn run_connect(identifier: String) -> Result<(), String> {
             line = lines.next_line() => {
                 match line {
                     Ok(Some(text)) => {
+                        deadline.as_mut().reset(tokio::time::Instant::now() + SESSION_IDLE_TIMEOUT);
                         if !handle_request(&text, &tx, &peripheral, &writer).await {
                             break;
                         }
@@ -557,4 +573,33 @@ fn decode_private_key(bytes: &[u8]) -> Result<RsaPrivateKey, String> {
     RsaPrivateKey::from_pkcs1_der(bytes)
         .or_else(|_| RsaPrivateKey::from_pkcs8_der(bytes))
         .map_err(|_| "invalid RSA private key".to_string())
+}
+
+#[cfg(test)]
+mod authorization_tests {
+    use super::*;
+
+    #[test]
+    fn recorder_matching_uses_native_id_and_rejects_shared_zero_address() {
+        let id = "12345678-1234-5678-9ABC-123456789ABC";
+        assert!(matches_identifier(&normalize_identifier(id), id, "00:00:00:00:00:00"));
+        assert!(!matches_identifier("000000000000", id, "00:00:00:00:00:00"));
+        assert!(!matches_identifier("", id, "00:00:00:00:00:00"));
+        assert!(!matches_identifier("87654321123456789abc123456789abc", id, "00:00:00:00:00:00"));
+        assert!(matches_identifier("aabbccddeeff", "other-id", "AA:BB:CC:DD:EE:FF"));
+    }
+
+    #[test]
+    fn consumer_identity_decrypts_with_the_native_bridge_contract() {
+        // Shared with the TypeScript provisioner test; synthetic, never a user key.
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../src/sync/fixtures/plaud-rsa-synthetic.json"
+        )).unwrap();
+        assert!(BASE64.decode(fixture["privateKey"].as_str().unwrap()).is_err());
+        let der = BASE64.decode(fixture["privateDer"].as_str().unwrap()).unwrap();
+        let key = decode_private_key(&der).unwrap();
+        let encrypted = BASE64.decode(fixture["ciphertext"].as_str().unwrap()).unwrap();
+        let clear = key.decrypt(Pkcs1v15Encrypt, &encrypted).unwrap();
+        assert_eq!(BASE64.encode(clear), fixture["plaintext"].as_str().unwrap());
+    }
 }

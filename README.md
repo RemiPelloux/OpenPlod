@@ -144,9 +144,34 @@ token, signed authorization, RSA key pair) with permissions `0600`:
 %APPDATA%/com.openplod.vault/plaud-device.json                       # Windows
 ```
 
-Getting this identity is not yet an in-app flow; the verified test used the owner's existing
-authorization. No identity, vendor secret, or SDK is distributed here. **Do not reset or rebind a
-device** to work around authorization errors.
+In the desktop app, select **Personal Plaud account**, then **Connect my Plaud**.
+A private Plaud sign-in window opens. Sign in with the account already linked to
+the recorder; OpenPlod retrieves authorization automatically, closes the temporary
+session and verifies encrypted Bluetooth access by reading the recording list.
+No browser cookie needs to be copied. Keep the recorder awake and disconnect
+other Bluetooth clients. Passwords and MFA remain in Plaud's own sign-in page.
+
+**Cancel** stops sign-in/provisioning or Bluetooth verification. Closing the login
+window also cancels sign-in. Temporary login cookies are not persisted; recorder
+keys are saved atomically with owner-only permissions. A transient serial-signing
+failure is retried once; uncertain key-generation requests are not replayed.
+If keys are saved but Bluetooth is unavailable, use **Verify Bluetooth access**
+to retry with the existing keys. Removing authorization cancels pending work and
+removes local keys only; recordings on the Mac and Plaud are kept.
+
+Browser-only clients retain manual `pld_ut` entry; partner users select **Plaud
+Partner account**. API clients must send `accountType: "personal"` for consumer
+authorization; omitting it preserves historical partner/developer behavior.
+
+Hardware validation on macOS Apple Silicon / Note Pro covered authorization, imports,
+checkpoint reuse, native playback and preservation of device originals. Windows/Linux personal sign-in and hardware transfer remain
+unverified. CI separately checks source behavior, bridge builds and macOS native authorization.
+
+Imports show the current step, received bytes and a circular percentage for measurable
+steps. Resumes reuse local bytes. Long downloads and conversions use inactivity timeouts;
+large recordings require sufficient memory and disk space. No user identity, account
+credential or SDK is distributed.
+**Do not reset or rebind a device** to work around authorization errors.
 
 ## Android Companion
 

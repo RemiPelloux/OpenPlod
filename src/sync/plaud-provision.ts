@@ -1,6 +1,7 @@
-import { existsSync } from 'node:fs';
-import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, renameSync } from 'node:fs';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { basename, dirname, join, resolve } from 'node:path';
 import { PlaudDeviceAuth, readDeviceCredentials } from './plaud-device-auth';
 import { isBluetoothIdentifier } from './plaud-bridge';
 
@@ -198,19 +199,36 @@ export async function readStoredIdentity(): Promise<PlaudDeviceIdentity | null> 
 }
 
 /** Persist an identity with owner-only permissions (the loader enforces this). */
-export async function writeStoredIdentity(identity: PlaudDeviceIdentity): Promise<void> {
+export async function writeStoredIdentity(identity: PlaudDeviceIdentity, signal?: AbortSignal): Promise<void> {
   const path = identityFilePath();
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  // Create with 0o600 up front so the key material is never briefly world-readable.
-  await writeFile(path, `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600 });
-  if (process.platform !== 'win32') await chmod(path, 0o600);
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  try {
+    signal?.throwIfAborted();
+    await writeFile(temporary, `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+    signal?.throwIfAborted();
+    // No asynchronous gap between the cancellation check and atomic commit.
+    renameSync(temporary, path);
+  } finally { await rm(temporary, { force: true }); }
 }
 
 export async function clearStoredIdentity(): Promise<boolean> {
   const path = identityFilePath();
-  if (!existsSync(path)) return false;
+  let removed = existsSync(path);
   await rm(path, { force: true });
-  return true;
+  // Also remove private staging files left by a process crash during an atomic save.
+  const names = await readdir(dirname(path)).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  const prefix = `${basename(path)}.`;
+  for (const name of names) {
+    if (name.startsWith(prefix) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/.test(name.slice(prefix.length))) {
+      await rm(join(dirname(path), name), { force: true });
+      removed = true;
+    }
+  }
+  return removed;
 }
 
 /**
