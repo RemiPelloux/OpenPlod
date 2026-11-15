@@ -1,4 +1,5 @@
 import { expect, test, spyOn } from 'bun:test';
+import * as os from 'node:os';
 import { checkPlaudDownloadSize, PlaudDownload, PlaudSessionPages, listPlaudSessions, recordingHandshake } from './plaud-transfer';
 import { downloadPlaudSession } from './plaud-transfer';
 
@@ -90,7 +91,13 @@ test('large recordings use memory admission instead of a 64 MiB cap', () => {
   expect(() => checkPlaudDownloadSize(size, 1024 ** 3)).not.toThrow();
   expect(() => checkPlaudDownloadSize(size, 128 * 1024 * 1024)).toThrow('memory');
   const prefix = Buffer.alloc(size - 4, 3);
-  const transfer = new PlaudDownload({ ...session, size }, prefix);
+  const memory = spyOn(os, 'freemem').mockReturnValue(1024 ** 3);
+  let transfer: PlaudDownload;
+  try {
+    transfer = new PlaudDownload({ ...session, size }, prefix);
+    expect(memory).toHaveBeenCalledTimes(1);
+  }
+  finally { memory.mockRestore(); }
   transfer.add(head);
   const last = Buffer.from(data); last.writeUInt32LE(prefix.length, 5);
   transfer.add(last);
