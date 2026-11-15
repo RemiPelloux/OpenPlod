@@ -17,7 +17,7 @@ export class OpenAiEngine implements TranscriptionEngine {
   readonly name: 'openai' | 'custom';
   private base: string;
   private key?: string;
-  constructor(key?: string, private fetcher: typeof fetch = fetch, endpoint?: string) {
+  constructor(key?: string, private fetcher: typeof fetch = fetch, endpoint?: string, private beforeSend?: () => void) {
     this.name = endpoint === undefined ? 'openai' : 'custom';
     this.base = endpoint ? customEndpoint(endpoint).base : '';
     this.key = this.name === 'custom' ? key : key ?? process.env.OPENAI_API_KEY;
@@ -70,7 +70,10 @@ export class OpenAiEngine implements TranscriptionEngine {
     if (prompt && !options.diarize) form.append('prompt', prompt);
     const signal = AbortSignal.any([AbortSignal.timeout(custom ? 3600000 : 180000), ...(options.signal ? [options.signal] : [])]);
     try {
-      signal.throwIfAborted(); options.onCheckpoint?.({ phase: 'submitting' });
+      signal.throwIfAborted();
+      try { this.beforeSend?.(); }
+      catch (error) { return transcriptionFailure(this.name, error instanceof Error ? error.message : 'Privacy check failed.'); }
+      options.onCheckpoint?.({ phase: 'submitting' });
       const response = await this.fetcher(custom ? `${this.base}/audio/transcriptions` : 'https://api.openai.com/v1/audio/transcriptions', { method: 'POST', redirect: 'error', headers: this.key ? { Authorization: `Bearer ${this.key}` } : {}, body: form, signal });
       if (!response.ok) return transcriptionFailure(this.name, `OpenAI transcription failed (HTTP ${response.status}).`);
       const payload = responseSchema.parse(await response.json());

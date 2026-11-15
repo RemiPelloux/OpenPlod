@@ -37,6 +37,13 @@ test('reprocess refuses to queue when the confirmed endpoint differs from saved 
   expect(jobQueue.activeJob('process-recording', ids[0])).toBeFalsy();
 });
 
+test('reprocess refuses a provider that differs from the one shown in the dialog', async () => {
+  const response = await post(`/${ids[0]}/reprocess`, { expectedProvider: 'whisper', confirmCost: true });
+  expect(response.status).toBe(409);
+  expect((await response.json()).code).toBe('transcription_provider_changed');
+  expect(jobQueue.activeJob('process-recording', ids[0])).toBeFalsy();
+});
+
 test('reprocess over the per-job threshold returns the estimate and queues only with confirmCost', async () => {
   const refused = await post(`/${ids[0]}/reprocess`, {});
   expect(refused.status).toBe(409);

@@ -94,8 +94,8 @@ export function assertPrivacy(config: Pick<AiConfig, 'privacyMode' | 'customBase
     throw new Error('Local-only mode blocks this provider. Change AI settings before sending data.');
 }
 
-/** Apply the latest privacy mode to the endpoint captured by the queued job. */
-export function assertQueuedTranscriptionPrivacy(database: Database, customBaseUrl: string, provider: SpeechProvider): void {
+/** Apply the latest privacy mode to the endpoint the request will use. */
+export function assertLivePrivacy(database: Database, customBaseUrl: string, provider: SpeechProvider | TextProvider): void {
   assertPrivacy({ privacyMode: readAiConfig(database).privacyMode, customBaseUrl }, provider);
 }
 export const textModels: Record<TextProvider, string> = {
@@ -114,7 +114,7 @@ function resolveText(database: Database, config: AiConfig, provider: TextProvide
     if (!config.customBaseUrl) throw new Error('Enter the custom endpoint URL in AI settings.');
     baseUrl = customEndpoint(config.customBaseUrl).base;
   } else if (provider !== 'ollama' && !apiKey) throw new Error(`Add a ${providerLabel(provider)} API key in AI settings.`);
-  return { provider, model: selectedModel, apiKey, ...(baseUrl ? { baseUrl } : {}), beforeSend: () => assertPrivacy(readAiConfig(database), provider) };
+  return { provider, model: selectedModel, apiKey, ...(baseUrl ? { baseUrl } : {}), beforeSend: () => assertLivePrivacy(database, baseUrl ?? '', provider) };
 }
 /**
  * The provider for a text task, plus its explicit fallbacks (AI-07). The primary

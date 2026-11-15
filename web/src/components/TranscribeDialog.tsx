@@ -54,7 +54,7 @@ export function TranscribeDialog({ recordingId, title, onClose, onQueued }: { re
         }
         expectedCustomEndpoint = fresh.customBaseUrl
       }
-      await api.transcribe(recordingId, { ...overrides, expectedCustomEndpoint, ...(costAccepted ? { confirmCost: true } : {}) })
+      await api.transcribe(recordingId, { ...overrides, expectedProvider: engine, expectedCustomEndpoint, ...(costAccepted ? { confirmCost: true } : {}) })
       onQueued(); onClose()
     } catch (e) { setError(e instanceof Error ? e.message : t('Could not queue transcription.')) } finally { setBusy(false) }
   }}>

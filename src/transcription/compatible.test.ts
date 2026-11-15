@@ -1,9 +1,12 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { OpenAiEngine } from './openai';
 import { createAiSettingsApi } from '../api/ai-settings';
 import { estimateSpeechUsd } from '../ai/pricing';
-import { aiConfigFromSettings, aiConfigSchema, assertQueuedTranscriptionPrivacy } from '../ai/config';
+import { aiConfigFromSettings, aiConfigSchema, assertLivePrivacy } from '../ai/config';
 import { TranscriptionRouter } from './router';
 const fake = (fn: (url: string, init: RequestInit) => Promise<Response>) => fn as typeof fetch;
 const audio = Buffer.from('fixture');
@@ -112,7 +115,7 @@ test('a live local-only change blocks subsequent chunks at the queued remote end
   try {
     const router = new TranscriptionRouter({
       primary: 'custom',
-      beforeAttempt: provider => assertQueuedTranscriptionPrivacy(db, remote, provider),
+      beforeAttempt: provider => assertLivePrivacy(db, remote, provider),
     }, { customBaseUrl: remote }).primaryOnly();
     expect((await router.transcribeBuffer(audio, 'audio/wav', { model: 'fixture' })).success).toBe(true);
     save.run(JSON.stringify({ privacyMode: 'local-only', customBaseUrl: 'http://localhost:18080/v1' }));
@@ -120,5 +123,29 @@ test('a live local-only change blocks subsequent chunks at the queued remote end
     expect(requests).toEqual([`${remote}/audio/transcriptions`]);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+
+test('a privacy change during file preparation is checked again before upload', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'openplod-privacy-'));
+  const file = join(root, 'synthetic.wav');
+  const originalFetch = globalThis.fetch;
+  let permitted = true;
+  let calls = 0;
+  try {
+    await writeFile(file, audio);
+    globalThis.fetch = fake(async () => { calls++; return Response.json({ text: 'Synthetic' }); });
+    const router = new TranscriptionRouter({
+      primary: 'custom',
+      beforeAttempt: () => { if (!permitted) throw new Error('Local-only mode blocks this provider.'); },
+    }, { customBaseUrl: 'https://speech.example/v1' });
+    const result = router.transcribeFile(file, { model: 'fixture' });
+    permitted = false;
+    expect((await result).error).toContain('Local-only');
+    expect(calls).toBe(0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await rm(root, { recursive: true, force: true });
   }
 });

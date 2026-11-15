@@ -40,7 +40,7 @@ import { createKnowledgeApi } from './api/knowledge';
 import { RecordingCollections } from './knowledge/collections';
 import { KnowledgeIndex } from './knowledge/retrieval';
 import { KnowledgeSuggestions } from './knowledge/suggestions';
-import { aiConfigSchema, readAiConfig, readSettings, assertPrivacy, assertQueuedTranscriptionPrivacy, sameCustomEndpoint } from './ai/config';
+import { aiConfigFromSettings, aiConfigSchema, readAiConfig, readSettings, assertPrivacy, assertLivePrivacy, sameCustomEndpoint } from './ai/config';
 import { effectiveTranscription } from './ai/transcription-profiles';
 import { startAutomation } from './automation';
 import { emitAutomationEvent } from './automation/hooks';
@@ -82,6 +82,9 @@ jobQueue.register('process-recording', async (data: any, job) => {
   }
   // The profile is resolved when the job runs, so provenance records exactly what was sent.
   const { config, options, profile, ignored } = effectiveTranscription(sqlite, aiConfigSchema.parse(data.config));
+  if (data.expectedProvider !== undefined && data.expectedProvider !== config.transcriptionEngine) {
+    throw new Error('The transcription provider changed. Review the destination and confirm again.');
+  }
   const currentConfig = readAiConfig(sqlite);
   assertPrivacy({ privacyMode: currentConfig.privacyMode, customBaseUrl: config.customBaseUrl }, config.transcriptionEngine);
   console.log(`[Job] Processing recording ${recordingId}`);
@@ -91,8 +94,8 @@ jobQueue.register('process-recording', async (data: any, job) => {
   const settings = readSettings(sqlite);
   const primary = config.transcriptionEngine;
   const router = new TranscriptionRouter(
-    { primary, fallback: config.transcriptionFallback, localOnly: currentConfig.privacyMode === 'local-only' || config.privacyMode === 'local-only', beforeAttempt: provider => assertQueuedTranscriptionPrivacy(sqlite, config.customBaseUrl, provider) },
-    { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey, openaiApiKey: settings.openaiApiKey, assemblyaiApiKey: settings.assemblyaiApiKey, customApiKey: sameCustomEndpoint(config.customBaseUrl, currentConfig.customBaseUrl) ? settings.customApiKey : undefined, customBaseUrl: config.customBaseUrl },
+    { primary, fallback: config.transcriptionFallback, localOnly: currentConfig.privacyMode === 'local-only' || config.privacyMode === 'local-only', beforeAttempt: provider => assertLivePrivacy(sqlite, config.customBaseUrl, provider) },
+    { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey, openaiApiKey: settings.openaiApiKey, assemblyaiApiKey: settings.assemblyaiApiKey, customApiKey: sameCustomEndpoint(config.customBaseUrl, aiConfigFromSettings(settings).customBaseUrl) ? settings.customApiKey : undefined, customBaseUrl: config.customBaseUrl },
   );
   const startedAt = new Date().toISOString();
   // Cost gate, spend ledger and long-audio chunking (AI-08, AI-10) live in the runner.

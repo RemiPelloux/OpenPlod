@@ -20,7 +20,7 @@ export class TranscriptionRouter {
     if (endpoint) this.customLocal = customEndpoint(endpoint).loopback;
     this.engines = new Map<EngineName, TranscriptionEngine>([
       ['whisper', new WhisperEngine()], ['mistral', new MistralEngine(credentials.mistralApiKey)], ['deepgram', new DeepgramEngine(credentials.deepgramApiKey)],
-      ['custom', new OpenAiEngine(credentials.customApiKey, fetch, endpoint)],
+      ['custom', new OpenAiEngine(credentials.customApiKey, fetch, endpoint, () => this.config.beforeAttempt?.('custom'))],
       ['openai', new OpenAiEngine(credentials.openaiApiKey)], ['assemblyai', new AssemblyAiEngine(credentials.assemblyaiApiKey)],
     ]);
   }

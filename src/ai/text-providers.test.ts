@@ -148,3 +148,18 @@ test('recording chat reads keys from shared AI settings, not a private Mistral l
   expect(auth).toBe('Bearer shared-openai-key'); expect(answer).toMatchObject({ provider: 'openai', fallbackFrom: [] }); expect(answer.completedAt).toBeString();
   db.close();
 });
+
+
+test('switching to local-only blocks a text selection captured for a remote endpoint', async () => {
+  using db = database({ chatProvider: 'custom', chatModel: 'fixture', customBaseUrl: 'https://llm.example/v1' });
+  const selection = textSelection(db, 'chat');
+  db.query("UPDATE user_settings SET value=? WHERE key='aiConfig'").run(JSON.stringify({
+    privacyMode: 'local-only', customBaseUrl: 'http://127.0.0.1:8080/v1',
+  }));
+  let calls = 0;
+  await expect(completeText(selection, [{ role: 'user', content: 'Synthetic' }], {}, async () => {
+    calls++;
+    return openAiReply();
+  })).rejects.toThrow('Local-only mode');
+  expect(calls).toBe(0);
+});
