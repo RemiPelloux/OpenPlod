@@ -67,3 +67,22 @@ test('analysis jobs are listed with their provider', async () => {
   const list = await (await createJobsApi(queue, database).request('/?type=analyze-recording')).json();
   expect(list.data.jobs).toMatchObject([{ type: 'analyze-recording', recordingId: recording.id, provider: 'ollama', priority: 5 }]);
 });
+
+
+test('a local custom primary with a cloud fallback requires cloud consent', async () => {
+  const recording = addRecording(database);
+  database.query("INSERT INTO user_settings(key,value) VALUES('aiConfig',?)").run(JSON.stringify({
+    transcriptionEngine: 'custom', transcriptionModel: 'fixture', customBaseUrl: 'http://localhost:18080/v1',
+    transcriptionFallback: ['mistral'],
+  }));
+  expect(planTranscription(database, recording.id).plan).toMatchObject({
+    provider: 'custom', local: false, requiresCloudConsent: true, cloudProviders: ['mistral'],
+  });
+  const response = await createJobsApi(queue, database).request('/', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'process-recording', recordingId: recording.id, confirm: true }),
+  });
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ code: 'cloud_consent_required', error: expect.stringContaining('mistral') });
+  expect(queue.getAllJobs()).toHaveLength(0);
+});

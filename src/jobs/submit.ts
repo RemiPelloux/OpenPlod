@@ -31,10 +31,11 @@ export function transcriptionOverrides(value: unknown): Partial<AiConfig> {
 
 export interface TranscriptionPlan {
   recordingId: string; provider: string; model: string | null; profile: string | null;
-  /** True when audio stays on this computer (Whisper.cpp). */
+  /** True when the primary and every fallback keep audio on this computer. */
   local: boolean;
   /** A cloud provider receives the audio and may bill for it; MCP and API clients must confirm this. */
   requiresCloudConsent: boolean;
+  cloudProviders: AiConfig['transcriptionEngine'][];
 }
 
 /** Resolve what a transcription job would do, without queueing it or contacting a provider. */
@@ -52,8 +53,10 @@ export function planTranscription(database: Database, recordingId: string, reque
     const known = error instanceof Error && /profile|does not (support|accept)|Unsupported|Local-only/.test(error.message);
     return fail(400, 'invalid_options', known ? (error as Error).message : 'Invalid or privacy-blocked transcription options.');
   }
-  const local = isLocalProvider(config, engine);
-  return { config, filePath: recording!.filePath, plan: { recordingId, provider: engine, model, profile, local, requiresCloudConsent: !local } };
+  const cloudProviders = [...new Set([engine, ...config.transcriptionFallback])]
+    .filter(provider => !isLocalProvider(config, provider));
+  const local = cloudProviders.length === 0;
+  return { config, filePath: recording!.filePath, plan: { recordingId, provider: engine, model, profile, local, requiresCloudConsent: !local, cloudProviders } };
 }
 
 export function initializeJobRequests(database: Database) {

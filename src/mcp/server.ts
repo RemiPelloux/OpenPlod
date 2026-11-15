@@ -45,7 +45,7 @@ const searchInput = {
   source: z.enum(['all', 'transcripts', 'documents']).default('all'),
   limit: z.number().int().min(1).max(50).default(10),
 };
-type TranscriptionPlan = { provider: string; model: string | null; local: boolean; requiresCloudConsent: boolean };
+type TranscriptionPlan = { provider: string; model: string | null; local: boolean; requiresCloudConsent: boolean; cloudProviders?: string[] };
 
 /** `access`: granted scopes, or a boolean for the pre-0.7 `allowWrites` flag. */
 export function createMcpServer(client: VaultClient, access: boolean | Iterable<McpScope> = false) {
@@ -135,7 +135,7 @@ export function createMcpServer(client: VaultClient, access: boolean | Iterable<
     }, ({ recordingId, acceptCloudProvider, idempotencyKey }) => result(async () => {
       const { plan } = await client.request('/api/v1/jobs', 'POST', { type: 'process-recording', recordingId, dryRun: true }) as { plan: TranscriptionPlan };
       if (plan.requiresCloudConsent && !acceptCloudProvider)
-        throw new Error(`Not started: this sends the recording audio to ${plan.provider}${plan.model ? ` (${plan.model})` : ''}, a cloud provider that may bill for it. Ask the person, then retry with acceptCloudProvider: true.`);
+        throw new Error(`Not started: this may send the recording audio to ${plan.cloudProviders?.join(', ') || plan.provider}. Provider charges may apply. Ask the person, then retry with acceptCloudProvider: true.`);
       return client.request('/api/v1/jobs', 'POST', { type: 'process-recording', recordingId, confirm: true, acceptCloudProvider, idempotencyKey });
     }));
   }
