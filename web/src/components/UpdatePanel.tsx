@@ -34,7 +34,7 @@ export function UpdatePanel() {
   return <div className="grid gap-2 pt-2 text-sm">
     <label className="flex items-center gap-2"><input type="checkbox" checked={auto} onChange={event => {
       setAutoInstall(event.target.checked); setAuto(event.target.checked)
-    }} />{t('Install downloaded updates automatically when OpenPlod next opens')}</label>
+    }} />{t('Download and install updates automatically before opening OpenPlod')}</label>
     <div className="flex flex-wrap items-center gap-2">
       <Button variant="outline" disabled={busy || state.kind === 'ready' || state.kind === 'installed'} onClick={() => void checkDesktopUpdate()}>
         {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />}{t('Check for updates')}

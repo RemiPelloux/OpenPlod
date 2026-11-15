@@ -1,5 +1,5 @@
-import { startDesktopUpdates } from '@/lib/desktop-updates'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { getUpdateState, startDesktopUpdates, subscribeUpdate } from '@/lib/desktop-updates'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { ArrowRight, Keyboard, Loader2, Radio, ScanLine, ShieldCheck, X } from "@/components/icons"
 import { Brand } from '@/components/Brand'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import { initializeRuntime, pairMobile, type RuntimeConfig } from '@/lib/runtime
 import { t } from '@/i18n'
 
 export function RuntimeGate({ children }: { children: ReactNode }) {
+  const update = useSyncExternalStore(subscribeUpdate, getUpdateState)
   const [runtime, setRuntime] = useState<RuntimeConfig | null>(null)
   const [error, setError] = useState('')
   const [address, setAddress] = useState('')
@@ -21,8 +22,8 @@ export function RuntimeGate({ children }: { children: ReactNode }) {
     initializeRuntime()
       .then(async config => {
         if (config.mode === 'desktop') {
-          await waitForDesktop(config.serviceOrigin)
           await startDesktopUpdates()
+          await waitForDesktop(config.serviceOrigin)
         }
         if (!disposed) setRuntime(config)
       })
@@ -49,6 +50,10 @@ export function RuntimeGate({ children }: { children: ReactNode }) {
       <div className="runtime-loading" role="status">
         <Brand />
         <Loader2 className="h-5 w-5 animate-spin text-primary" />
+        {update.kind === 'checking' && <p>{t('Checking for updates…')}</p>}
+        {update.kind === 'downloading' && <p>{update.percent === null ? t('Downloading update…') : t('Downloading update {percent}%', { percent: update.percent })}</p>}
+        {update.kind === 'installing' && <p>{t('Installing…')}</p>}
+
       </div>
     )
   }

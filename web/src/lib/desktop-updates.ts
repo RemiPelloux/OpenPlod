@@ -9,7 +9,7 @@ type State =
   | { kind: 'error'; message?: string }
 
 const autoKey = 'openplod.installUpdateOnRestart'
-const pendingKey = 'openplod.downloadedUpdateVersion'
+const attemptedKey = 'openplod.attemptedStartupUpdate'
 let state: State = { kind: 'idle' }
 let pending: Update | null = null
 let startup: Promise<void> | undefined
@@ -25,7 +25,7 @@ function publish(value: State) {
   listeners.forEach(listener => listener())
 }
 
-export const autoInstallEnabled = () => localStorage.getItem(autoKey) === 'true'
+export const autoInstallEnabled = () => localStorage.getItem(autoKey) !== 'false'
 export function setAutoInstall(enabled: boolean) {
   localStorage.setItem(autoKey, String(enabled))
 }
@@ -35,7 +35,7 @@ export async function installDesktopUpdate(restart = false) {
   const update = pending
   publish({ kind: 'installing' })
   // Never loop on a failed installer at the next startup.
-  localStorage.removeItem(pendingKey)
+  if (restart) localStorage.setItem(attemptedKey, update.version)
   try {
     await update.install()
     pending = null
@@ -49,7 +49,7 @@ export async function installDesktopUpdate(restart = false) {
   }
 }
 
-export async function checkDesktopUpdate(expectedAtRestart?: string) {
+export async function checkDesktopUpdate(installOnStartup = false) {
   if (!getRuntime().updaterEnabled || ['checking', 'downloading', 'ready', 'installing', 'installed'].includes(state.kind)) return
   publish({ kind: 'checking' })
   let update: Update | null = null
@@ -57,7 +57,7 @@ export async function checkDesktopUpdate(expectedAtRestart?: string) {
     const { check } = await import('@tauri-apps/plugin-updater')
     update = await check({ timeout: 15000 })
     if (!update) {
-      localStorage.removeItem(pendingKey)
+      localStorage.removeItem(attemptedKey)
       publish({ kind: 'current' })
       return
     }
@@ -72,9 +72,8 @@ export async function checkDesktopUpdate(expectedAtRestart?: string) {
       }
     }, { timeout: 120000 })
     pending = update
-    localStorage.setItem(pendingKey, version)
     publish({ kind: 'ready', version })
-    if (expectedAtRestart === version && autoInstallEnabled()) await installDesktopUpdate(true)
+    if (installOnStartup && localStorage.getItem(attemptedKey) !== version && autoInstallEnabled()) await installDesktopUpdate(true)
   } catch (error) {
     pending = null
     if (update) await update.close().catch(() => {})
@@ -82,12 +81,12 @@ export async function checkDesktopUpdate(expectedAtRestart?: string) {
   }
 }
 
-/** Wait before opening the workspace only for a previously downloaded, opted-in update. */
+/** Hold the workspace at startup only when automatic installation is enabled. */
 export function startDesktopUpdates(): Promise<void> {
   if (!getRuntime().updaterEnabled) return Promise.resolve()
   if (startup) return startup
-  const expected = autoInstallEnabled() ? localStorage.getItem(pendingKey) ?? undefined : undefined
-  const check = checkDesktopUpdate(expected)
-  startup = expected ? check : Promise.resolve()
+  const automatic = autoInstallEnabled()
+  const check = checkDesktopUpdate(automatic)
+  startup = automatic ? check : Promise.resolve()
   return startup
 }
