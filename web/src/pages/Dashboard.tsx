@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Bluetooth,
   FileAudio,
+  Share2,
   LayoutGrid,
   List,
   Loader2,
@@ -44,6 +45,7 @@ import { WorkspaceTiles } from "@/components/WorkspaceTiles";
 import { RecordingTagsDialog } from "@/components/RecordingTagsDialog";
 import { Button } from "@/components/ui/button";
 import { api, type Recording } from "@/lib/api";
+import { exportOriginalAudio } from "@/lib/document-export";
 import { formatDuration } from "@/lib/utils";
 import { formatDate, t, tn } from "@/i18n";
 import { BatchTranscribe } from '@/components/BatchTranscribe'
@@ -86,6 +88,19 @@ export function Dashboard() {
   const [tagRefresh, setTagRefresh] = useState(0);
   const tagEditorOpen = useRef(false);
   const tagReturnFocus = useRef<HTMLElement | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const exportAudio = async (row: Recording) => {
+    if (exporting) return;
+    setExporting(true);
+    setError("");
+    try {
+      await exportOriginalAudio(row);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setExporting(false);
+    }
+  };
   const editTags = (row: Recording) => {
     tagReturnFocus.current = document.getElementById(`recording-open-${row.id}`);
     tagEditorOpen.current = true;
@@ -174,8 +189,8 @@ export function Dashboard() {
         ),
     [recordings, source, starred, status, search, sort],
   );
-  const activeId =
-    filtered.find((row) => row.id === selected)?.id || filtered[0]?.id;
+  const activeRecording = filtered.find((row) => row.id === selected) ?? filtered[0];
+  const activeId = activeRecording?.id;
   const choose = (id: string) => {
     setSelected(id);
     if (window.matchMedia("(max-width: 1100px)").matches)
@@ -258,8 +273,8 @@ export function Dashboard() {
     { id: "all", label: t("All"), icon: FileAudio },
     { id: "voice", label: t("Voice"), icon: Mic },
     { id: "plaud", label: "Plaud", icon: Bluetooth },
-    { id: "imported", label: t("Imported"), icon: Upload },
     { id: "starred", label: t("Starred"), icon: Star },
+    { id: "imported", label: t("Imported"), icon: Upload },
   ];
   return (
     <div className="studio-page">
@@ -302,31 +317,40 @@ export function Dashboard() {
             <BatchTranscribe recordings={recordings} onFinished={() => void load()} />
           )}
           <div className="studio-library-toolbar">
-            <div
-              className="studio-source-tabs"
-              role="tablist"
-              aria-label={t("Recording source")}
-            >
-              {filters.map(({ id, label, icon: Icon }, index) => (
-                <button
-                  key={id}
-                  id={`source-tab-${id}`}
-                  role="tab"
-                  aria-label={label}
-                  title={label}
-                  aria-selected={source === id}
-                  tabIndex={source === id ? 0 : -1}
-                  onClick={() => setSource(id)}
-                  onKeyDown={event => {
-                    const next = event.key === 'ArrowRight' ? (index + 1) % filters.length : event.key === 'ArrowLeft' ? (index + filters.length - 1) % filters.length : event.key === 'Home' ? 0 : event.key === 'End' ? filters.length - 1 : null
-                    if (next === null) return
-                    event.preventDefault(); setSource(filters[next].id); document.getElementById(`source-tab-${filters[next].id}`)?.focus()
-                  }}
-                >
-                  <Icon />
-                  <span>{label}</span>
+            <div className="studio-source-actions">
+              <div
+                className="studio-source-tabs"
+                role="tablist"
+                aria-label={t("Recording source")}
+              >
+                {filters.map(({ id, label, icon: Icon }, index) => (
+                  <button
+                    key={id}
+                    id={`source-tab-${id}`}
+                    role="tab"
+                    aria-label={label}
+                    title={label}
+                    aria-selected={source === id}
+                    tabIndex={source === id ? 0 : -1}
+                    onClick={() => setSource(id)}
+                    onKeyDown={event => {
+                      const next = event.key === 'ArrowRight' ? (index + 1) % filters.length : event.key === 'ArrowLeft' ? (index + filters.length - 1) % filters.length : event.key === 'Home' ? 0 : event.key === 'End' ? filters.length - 1 : null
+                      if (next === null) return
+                      event.preventDefault(); setSource(filters[next].id); document.getElementById(`source-tab-${filters[next].id}`)?.focus()
+                    }}
+                  >
+                    <Icon />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+              {retention === "active" && (
+                <button type="button" className="studio-export-action" disabled={!activeRecording || exporting}
+                  title={activeRecording?.title}
+                  onClick={() => { if (activeRecording) void exportAudio(activeRecording); }}>
+                  <Share2 /><span>Export</span>
                 </button>
-              ))}
+              )}
             </div>
             <div className="studio-sort-tools">
               <button
@@ -491,6 +515,9 @@ export function Dashboard() {
                             <DropdownMenu.Item onSelect={() => choose(row.id)}>
                               <Play />{t("Open preview")}
                             </DropdownMenu.Item>
+                            <DropdownMenu.Item disabled={exporting} onSelect={() => void exportAudio(row)}>
+                              <Share2 />{t("Export audio")}
+                            </DropdownMenu.Item>
                             <DropdownMenu.Item onSelect={() => editTags(row)}>
                               <Tags />{t("Edit tags")}
                             </DropdownMenu.Item>
@@ -517,6 +544,9 @@ export function Dashboard() {
                 <ContextMenu.Portal>
                   <ContextMenu.Content className="action-menu" onCloseAutoFocus={event => { if (tagEditorOpen.current) event.preventDefault(); }}>
                     <ContextMenu.Item onSelect={() => choose(row.id)}><Play />{t("Open preview")}</ContextMenu.Item>
+                    {retention === "active" && (
+                      <ContextMenu.Item disabled={exporting} onSelect={() => void exportAudio(row)}><Share2 />{t("Export audio")}</ContextMenu.Item>
+                    )}
                     <ContextMenu.Item onSelect={() => editTags(row)}><Tags />{t("Edit tags")}</ContextMenu.Item>
                     <CollectionContextSubmenu {...collectionMenu(row)} />
                     <ContextMenu.Item onSelect={() => navigate(`/recording/${row.id}`)}><Pencil />{t("Edit recording")}</ContextMenu.Item>

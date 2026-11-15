@@ -48,6 +48,19 @@ pub async fn export_document(app: tauri::AppHandle, filename: String, content: S
     }).await.map_err(|_| "Export could not start.")?
 }
 
+fn vault_http_client() -> Result<reqwest::blocking::Client, String> {
+    // Tauri enables reqwest's rustls backend without selecting a crypto provider.
+    // Client construction needs one even for this loopback HTTP request.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    reqwest::blocking::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(300))
+        .build()
+        .map_err(|_| "Could not access the vault.".into())
+}
+
 #[tauri::command]
 pub async fn export_audio(app: tauri::AppHandle, info: tauri::State<'_, crate::RuntimeInfo>,
                           recording_id: String, filename: String) -> Result<bool, String> {
@@ -57,9 +70,7 @@ pub async fn export_audio(app: tauri::AppHandle, info: tauri::State<'_, crate::R
     let token = info.pairing_token.clone().ok_or("Vault authentication is unavailable.")?;
     tauri::async_runtime::spawn_blocking(move || {
         let Some(path) = destination(&filename, &vault)? else { return Ok(false) };
-        let client = reqwest::blocking::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(Duration::from_secs(5)).timeout(Duration::from_secs(300))
-            .build().map_err(|_| "Could not access the vault.")?;
+        let client = vault_http_client()?;
         let mut response = client.get(format!("http://127.0.0.1:{}/api/recordings/{recording_id}/audio", crate::SERVICE_PORT))
             .header("X-OpenPlod-Token", token).send().and_then(|r| r.error_for_status())
             .map_err(|_| "Recording audio is unavailable. Check the vault and retry.")?;
@@ -93,6 +104,11 @@ fn export_folder_allowed(folder: &Path, vault: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vault_http_client_builds_with_tauri_tls_features() {
+        assert!(vault_http_client().is_ok());
+    }
 
     #[test]
     fn export_folder_must_be_outside_the_vault() {

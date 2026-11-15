@@ -29,6 +29,7 @@ uuid = { version = "1", features = ["v4"] }
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 rfd = "0.15"
 reqwest = { version = "0.13", default-features = false, features = ["blocking"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tempfile = "3"
 # REL-07: signed in-app updates. The public key is injected at release build time (see scripts/release-config.ts).
 tauri-plugin-updater = "2"

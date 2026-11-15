@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { getRuntime } from './runtime'
-import type { Recording } from './api'
+import { api, type Recording } from './api'
+import { deviceCommand, supportsPlaudDevice, vaultArguments } from './plaud-device'
 
 export function recordingMarkdown(recording: Recording, text: string, version?: { versionId: string | null; origin: string | null }): string {
   const metadata = [
@@ -34,15 +35,21 @@ export async function exportDocument(options: { filename: string; content: strin
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export async function exportOriginalAudio(recording: Recording, audioUrl: string): Promise<void> {
+export async function exportOriginalAudio(recording: Recording, audioUrl?: string): Promise<void> {
   if (getRuntime().mode === 'desktop') {
     await invoke('export_audio', { recordingId: recording.id, filename: recording.filename || 'recording.wav' })
     return
   }
+  if (supportsPlaudDevice()) {
+    await deviceCommand('exportVaultRecording', { ...vaultArguments(), recordingId: recording.id, filename: recording.filename })
+    return
+  }
+  const url = audioUrl || URL.createObjectURL(await api.getAudioBlob(recording.id))
   const link = document.createElement('a')
-  link.href = audioUrl
+  link.href = url
   link.download = recording.filename || `${safeDocumentName(recording.title)}.webm`
   document.body.append(link); link.click(); link.remove()
+  if (!audioUrl) window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export function safeDocumentName(value: string): string {
