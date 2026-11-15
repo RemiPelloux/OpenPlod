@@ -2,7 +2,7 @@ import type { Database } from 'bun:sqlite';
 import { z } from 'zod';
 import { revealSettings } from '../vault/secrets';
 
-export const speechProviders = ['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai'] as const;
+export const speechProviders = ['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai', 'custom'] as const;
 export const textProviders = ['mistral', 'openai', 'anthropic', 'ollama', 'gemini', 'custom'] as const;
 export type SpeechProvider = typeof speechProviders[number];
 export type TextProvider = typeof textProviders[number];
@@ -22,6 +22,10 @@ export function customEndpoint(value: string): { base: string; loopback: boolean
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) throw new Error('Custom endpoints must use HTTPS unless they run on this computer (loopback).');
   if (url.username || url.password || url.search || url.hash) throw new Error('Custom endpoint URLs cannot contain credentials, query strings or fragments.');
   return { base: `${url.origin}${url.pathname.replace(/\/+$/, '')}`, loopback };
+}
+export function sameCustomEndpoint(left: string, right: string): boolean {
+  if (!left || !right) return left === right;
+  return customEndpoint(left).base === customEndpoint(right).base;
 }
 const fallbackEntry = z.object({ provider: z.enum(textProviders), model: model.default('') }).strict();
 const usd = z.number().finite().min(0).max(100000).nullable().default(null);

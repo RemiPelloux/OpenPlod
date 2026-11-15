@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
-import { aiConfigSchema, assertPrivacy, readAiConfig, readSettings, speechProviders, type AiConfig, type SpeechProvider } from '../ai/config';
-import { speechCapabilities, validateSpeechOptions } from '../ai/capabilities';
+import { aiConfigSchema, assertPrivacy, readAiConfig, readSettings, sameCustomEndpoint, speechProviders, type AiConfig, type SpeechProvider } from '../ai/config';
+import { omitsTranscriptionHints, speechCapabilities, validateSpeechOptions } from '../ai/capabilities';
 import type { Job, JobContext, JobQueue } from '../jobs/queue';
 import { TranscriptionRouter } from '../transcription/router';
 import type { TranscriptionOptions, TranscriptionResult } from '../transcription/types';
@@ -74,7 +74,7 @@ export function prepareComparison(database: Database, recordingId: string, input
 
   const capabilities = speechCapabilities[engine];
   const model = typeof input.model === 'string' ? input.model.trim() : '';
-  if (model && !(capabilities.models as readonly string[]).includes(model)) throw new ComparisonError(400, `Unsupported ${engine} transcription model.`);
+  const ignoresContext = omitsTranscriptionHints(engine, base.transcriptionDiarize);
   // Hints the second provider cannot take are left out and recorded, never sent half-supported.
   const ignoredHints: string[] = [];
   const keep = <T>(value: T, empty: T, supported: boolean, name: string, present: boolean): T => {
@@ -84,8 +84,8 @@ export function prepareComparison(database: Database, recordingId: string, input
   const config: AiConfig = aiConfigSchema.parse({
     ...base, transcriptionEngine: engine, transcriptionModel: model, transcriptionFallback: [], transcriptionProfile: '',
     transcriptionDiarize: keep(base.transcriptionDiarize, false, capabilities.diarization, 'speaker labels', base.transcriptionDiarize),
-    transcriptionVocabulary: keep(base.transcriptionVocabulary, [], capabilities.vocabulary, 'vocabulary', base.transcriptionVocabulary.length > 0),
-    transcriptionPrompt: keep(base.transcriptionPrompt, '', capabilities.prompt, 'prompt', Boolean(base.transcriptionPrompt.trim())),
+    transcriptionVocabulary: keep(base.transcriptionVocabulary, [], capabilities.vocabulary && !ignoresContext, 'vocabulary', base.transcriptionVocabulary.length > 0),
+    transcriptionPrompt: keep(base.transcriptionPrompt, '', capabilities.prompt && !ignoresContext, 'prompt', Boolean(base.transcriptionPrompt.trim())),
   });
   try { validateSpeechOptions(engine, optionsFor(config)); } catch (error) { throw new ComparisonError(400, (error as Error).message); }
   return { recordingId, filePath: recording.filePath, config, compare: { provider: engine, ignoredHints } };
@@ -126,11 +126,12 @@ export type ComparisonTranscriber = (filePath: string, config: AiConfig, options
 /** The real transcriber: the chosen provider only, with no fallback. */
 export const routerTranscriber = (database: Database): ComparisonTranscriber => (filePath, config, options) => {
   const settings = readSettings(database);
+  const currentConfig = readAiConfig(database);
   const router = new TranscriptionRouter({
     primary: config.transcriptionEngine, fallback: [],
-    localOnly: readAiConfig(database).privacyMode === 'local-only' || config.privacyMode === 'local-only',
+    localOnly: currentConfig.privacyMode === 'local-only' || config.privacyMode === 'local-only',
     beforeAttempt: provider => assertPrivacy(readAiConfig(database), provider),
-  }, { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey, openaiApiKey: settings.openaiApiKey, assemblyaiApiKey: settings.assemblyaiApiKey });
+  }, { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey, openaiApiKey: settings.openaiApiKey, assemblyaiApiKey: settings.assemblyaiApiKey, customApiKey: sameCustomEndpoint(config.customBaseUrl, currentConfig.customBaseUrl) ? settings.customApiKey : undefined, customBaseUrl: config.customBaseUrl });
   return router.transcribeFile(filePath, options);
 };
 

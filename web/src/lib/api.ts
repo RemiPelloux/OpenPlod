@@ -244,7 +244,7 @@ export interface SearchResult {
 }
 
 export interface Settings {
-  transcriptionEngine: 'whisper' | 'mistral' | 'deepgram' | 'openai' | 'assemblyai'
+  transcriptionEngine: 'whisper' | 'mistral' | 'deepgram' | 'openai' | 'assemblyai' | 'custom'
   mistralApiKey?: string
   deepgramApiKey?: string
   mistralApiKeyConfigured?: boolean
@@ -635,7 +635,7 @@ export const api = {
     const d = res.data
     const engine = typeof d.transcriptionEngine === 'string' ? d.transcriptionEngine : ''
     return {
-      transcriptionEngine: ['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai'].includes(engine)
+      transcriptionEngine: ['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai', 'custom'].includes(engine)
         ? engine as Settings['transcriptionEngine']
         : 'whisper',
       mistralApiKey: typeof d.mistralApiKey === 'string' ? d.mistralApiKey : '',

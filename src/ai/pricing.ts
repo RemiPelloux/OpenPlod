@@ -16,6 +16,7 @@ export type SpeechPrice = { usdPerMinute: number | null; note?: string };
 export type TextPrice = { usdPerMillionInput: number; usdPerMillionOutput: number } | null;
 
 export const speechPrices: Record<SpeechProvider, Record<string, SpeechPrice>> = {
+  custom: {},
   whisper: { base: { usdPerMinute: 0, note: 'Runs on this computer.' }, small: { usdPerMinute: 0, note: 'Runs on this computer.' }, medium: { usdPerMinute: 0, note: 'Runs on this computer.' } },
   mistral: { 'voxtral-mini-latest': { usdPerMinute: 0.001 } },
   deepgram: { 'nova-2': { usdPerMinute: null, note: 'Plan- and add-on-dependent; not estimated.' }, 'nova-3': { usdPerMinute: null, note: 'Plan- and add-on-dependent; not estimated.' } },

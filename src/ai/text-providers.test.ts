@@ -117,7 +117,7 @@ test('Ollama context is read from /api/show; an oversized transcript is refused 
 test('settings expose capabilities, pricing and spend, and check Gemini and custom endpoints with the right headers', async () => {
   const db = database({ customBaseUrl: 'https://llm.example.com/v1' }, { geminiApiKey: 'g-key', customApiKey: 'c-key' });
   const seen: { url: string; headers: Record<string, string> }[] = [];
-  const api = createAiSettingsApi(db, (async (url: string, init: RequestInit) => { seen.push({ url, headers: init.headers as Record<string, string> }); return new Response('{}', { status: 200 }); }) as typeof fetch);
+  const api = createAiSettingsApi(db, (async (url: string, init: RequestInit) => { seen.push({ url, headers: init.headers as Record<string, string> }); return Response.json({ data: [{ id: 'test-model' }] }); }) as typeof fetch);
   const settings = await (await api.request('/')).json();
   expect(settings.data.pricing.pricesAsOf).toMatch(/^\d{4}-/); expect(settings.data.textCapabilities.custom).toEqual({ defaultModel: null, local: false, requiresKey: false });
   expect(settings.data.capabilities.mistral.languages['voxtral-mini-latest']).toContain('fr');

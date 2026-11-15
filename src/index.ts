@@ -40,7 +40,7 @@ import { createKnowledgeApi } from './api/knowledge';
 import { RecordingCollections } from './knowledge/collections';
 import { KnowledgeIndex } from './knowledge/retrieval';
 import { KnowledgeSuggestions } from './knowledge/suggestions';
-import { aiConfigSchema, readAiConfig, readSettings, assertPrivacy } from './ai/config';
+import { aiConfigSchema, readAiConfig, readSettings, assertPrivacy, sameCustomEndpoint } from './ai/config';
 import { effectiveTranscription } from './ai/transcription-profiles';
 import { startAutomation } from './automation';
 import { emitAutomationEvent } from './automation/hooks';
@@ -92,7 +92,7 @@ jobQueue.register('process-recording', async (data: any, job) => {
   const primary = config.transcriptionEngine;
   const router = new TranscriptionRouter(
     { primary, fallback: config.transcriptionFallback, localOnly: currentConfig.privacyMode === 'local-only' || config.privacyMode === 'local-only', beforeAttempt: provider => assertPrivacy(readAiConfig(sqlite), provider) },
-    { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey, openaiApiKey: settings.openaiApiKey, assemblyaiApiKey: settings.assemblyaiApiKey },
+    { mistralApiKey: settings.mistralApiKey, deepgramApiKey: settings.deepgramApiKey, openaiApiKey: settings.openaiApiKey, assemblyaiApiKey: settings.assemblyaiApiKey, customApiKey: sameCustomEndpoint(config.customBaseUrl, currentConfig.customBaseUrl) ? settings.customApiKey : undefined, customBaseUrl: config.customBaseUrl },
   );
   const startedAt = new Date().toISOString();
   // Cost gate, spend ledger and long-audio chunking (AI-08, AI-10) live in the runner.
@@ -241,7 +241,7 @@ function saveLegacySettings(entries: [string, unknown][]): string | null {
   for (const [key, value] of entries) {
     if (!LEGACY_SETTING_KEYS.has(key)) return 'Unknown setting';
     if (key === 'transcriptionEngine') {
-      if (!['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai'].includes(String(value))) return 'Unknown transcription provider.';
+      if (!['whisper', 'mistral', 'deepgram', 'openai', 'assemblyai', 'custom'].includes(String(value))) return 'Unknown transcription provider.';
       if (readAiConfig(sqlite).privacyMode === 'local-only' && value !== 'whisper') return 'Local-only mode blocks cloud transcription.';
     }
   }

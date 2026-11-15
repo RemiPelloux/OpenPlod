@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { z } from 'zod';
 import { speechProviders, type AiConfig, type SpeechProvider } from './config';
-import { speechCapabilities, validateSpeechOptions } from './capabilities';
+import { omitsTranscriptionHints, speechCapabilities, validateSpeechOptions } from './capabilities';
 
 /**
  * Transcription profiles: a named context prompt, vocabulary, and optional
@@ -138,7 +138,7 @@ export interface EffectiveTranscription {
   config: AiConfig;
   options: { model?: string; language: string; diarize: boolean; vocabulary: string[]; prompt?: string };
   profile: { id: string; name: string } | null;
-  /** Profile hints the selected provider cannot take, and so were not sent. */
+  /** Hints the selected transcription mode did not send. */
   ignored: string[];
 }
 
@@ -174,6 +174,12 @@ export function effectiveTranscription(database: Database, config: AiConfig): Ef
     transcriptionVocabulary: dedupe([...config.transcriptionVocabulary, ...profileVocabulary]),
     transcriptionPrompt: [config.transcriptionPrompt, profilePromptText].filter(Boolean).join('\n').slice(0, 2000),
   };
+  if (omitsTranscriptionHints(engine, effective.transcriptionDiarize)) {
+    if (effective.transcriptionVocabulary.length) ignored.push('vocabulary');
+    if (effective.transcriptionPrompt.trim()) ignored.push('prompt');
+    effective.transcriptionVocabulary = [];
+    effective.transcriptionPrompt = '';
+  }
   return {
     config: effective,
     options: { model: effective.transcriptionModel || undefined, language: effective.transcriptionLanguage, diarize: effective.transcriptionDiarize,

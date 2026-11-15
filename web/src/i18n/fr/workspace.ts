@@ -1,5 +1,10 @@
 /** French strings for the workspace area, keyed by the English source string. */
 export const workspace: Record<string, string> = {
+  'Select server model': 'Choisir un modèle du serveur',
+  'Load server models': 'Charger les modèles du serveur',
+  'Speaker labels are on. Context and vocabulary won’t be sent.': 'Intervenants activés. Le contexte et le vocabulaire ne seront pas envoyés.',
+  'Server models loaded. Audio and speaker-label support depend on the selected model.': 'Modèles chargés. La transcription et l’identification des intervenants dépendent du modèle choisi.',
+
   // Library (Dashboard)
   'Permanently delete this recording and its audio? This cannot be undone.': 'Supprimer définitivement cet enregistrement et son audio ? Cette action est irréversible.',
   'Delete the collection "{name}"? Its recordings are kept.': 'Supprimer la collection « {name} » ? Ses enregistrements sont conservés.',

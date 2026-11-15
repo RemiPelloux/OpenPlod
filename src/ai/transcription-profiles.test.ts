@@ -49,6 +49,21 @@ describe('Transcription profiles', () => {
     expect(effectiveTranscription(db, config({ transcriptionEngine: 'assemblyai', transcriptionProfile: meeting.id })).options.diarize).toBe(true);
   });
 
+  test('custom diarization records omitted hints and preserves them when diarization is off', () => {
+    const profile = profiles.create({ name: 'French meeting', language: 'fr', prompt: 'Meeting context', vocabulary: ['OpenPlod'] });
+    const settings = config({
+      transcriptionEngine: 'custom', transcriptionModel: 'VibeVoice-ASR', transcriptionProfile: profile.id,
+      transcriptionDiarize: true, transcriptionPrompt: 'Agenda', transcriptionVocabulary: ['PLAUD'],
+    });
+    const diarized = effectiveTranscription(db, settings);
+    expect(diarized.options).toEqual({ model: 'VibeVoice-ASR', language: 'fr', diarize: true, vocabulary: [] });
+    expect(diarized.ignored).toEqual(['vocabulary', 'prompt']);
+
+    const plain = effectiveTranscription(db, { ...settings, transcriptionDiarize: false });
+    expect(plain.options).toMatchObject({ prompt: 'Agenda\nMeeting context', vocabulary: ['PLAUD', 'OpenPlod'] });
+    expect(plain.ignored).toEqual([]);
+  });
+
   test('a provider-specific profile selects its engine, model, language, and vocabulary', () => {
     const french = profiles.create({ name: 'Cours', engine: 'whisper', model: 'medium', language: 'fr', prompt: 'Cours de droit.', vocabulary: ['Conseil d’État'] });
     const resolved = effectiveTranscription(db, config({ transcriptionEngine: 'openai', transcriptionModel: 'whisper-1', transcriptionVocabulary: ['Plaud'], transcriptionProfile: french.id }));

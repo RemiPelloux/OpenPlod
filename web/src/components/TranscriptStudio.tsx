@@ -440,7 +440,7 @@ function VersionsPanel({ recording, busy, run, onChanged }: {
 }
 
 const providerLabel = (name: string) => ({
-  whisper: t('Whisper.cpp (local)'), mistral: 'Mistral Voxtral', deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI',
+  custom: t('Custom endpoint'), whisper: t('Whisper.cpp (local)'), mistral: 'Mistral Voxtral', deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI',
 } as Record<string, string>)[name] ?? name
 
 // ---------------------------------------------------------------------------
