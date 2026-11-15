@@ -84,7 +84,11 @@ pub async fn plaud_sign_in(app: tauri::AppHandle, window: WebviewWindow) -> Resu
                 let navigation_error = handler_error.clone();
                 // window_features shares the opener configuration and session; an
                 // unrelated webview or external browser loses the OAuth popup reply.
-                match WebviewWindowBuilder::new(&popup_app, PROVIDER_WINDOW, WebviewUrl::External("about:blank".parse().unwrap()))
+                let provider = WebviewWindowBuilder::new(&popup_app, PROVIDER_WINDOW, WebviewUrl::External("about:blank".parse().unwrap()));
+                // WebView2 requires the popup controller to share the opener profile.
+                #[cfg(target_os = "windows")]
+                let provider = provider.incognito(true);
+                match provider
                     .window_features(features).title("Plaud — Sign in").inner_size(600.0, 760.0)
                     .on_navigation(move |url| {
                         let allowed = provider_url_allowed(url);

@@ -96,6 +96,7 @@ export function PlaudDeviceAuthorization({ status, onAuthorized, variant = 'page
       current.controller.signal.throwIfAborted()
       setVerified(true)
       setNotice(t('Bluetooth access verified. Your recordings can now be listed.'))
+      operation.current = null
       onAuthorized?.()
     } catch (failure) {
       if (!verifyOnly && !current.verifying) await api.cancelPlaudAuthorization(current.id).catch(() => undefined)

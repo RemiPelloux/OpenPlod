@@ -405,6 +405,7 @@ app.get('/identity', async c => {
 
 // Personal accounts use pld_ut and consumer endpoints; partner access is explicit.
 app.post('/identity', async c => {
+  const generation = authorizationOperation.generation;
   let body: { token?: string; accountType?: string; domain?: string; serial?: string; identifier?: string; operationId?: string };
   try { body = await c.req.json(); }
   catch { return c.json({ success: false, error: 'Invalid authorization request.' }, 400); }
@@ -429,7 +430,7 @@ app.post('/identity', async c => {
     return c.json({ success: true, data: {
       authorized: true, serial: identity.serial, identifier: identity.identifier, deviceType: identity.deviceType,
     }});
-    });
+    }, generation);
   } catch (error) { return c.json({ success: false, error: authorizationError(error) }, 400); }
 });
 

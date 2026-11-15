@@ -29,3 +29,14 @@ test('cancellation settles active work before acknowledging and concurrent work 
   expect(wrote).toBe(false);
   expect(acknowledged).toBe(true);
 });
+
+
+test('clear invalidates requests whose bodies were already pending', async () => {
+  const operation = new PlaudAuthorizationOperation();
+  const generation = operation.generation;
+  await operation.cancel();
+  let calls = 0;
+  await expect(operation.run('late-body', async () => ++calls, generation)).rejects.toThrow('cancelled');
+  expect(calls).toBe(0);
+  expect(await operation.run('new-request', async () => ++calls)).toBe(1);
+});

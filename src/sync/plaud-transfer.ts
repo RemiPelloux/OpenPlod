@@ -132,7 +132,7 @@ export async function downloadPlaudSession(connection: PlaudPackets, session: Pl
     const before = download.downloaded.length;
     const result = download.add(await connection.packet(Math.max(1, deadline - Date.now())));
     if (download.downloaded.length > before) deadline = Date.now() + 15000;
-    if (download.downloaded.length - checkpointed >= 65536) { await options.checkpoint?.(download.downloaded); checkpointed = download.downloaded.length; }
+    if (download.downloaded.length - checkpointed >= 65536) { await options.checkpoint?.(download.downloaded); checkpointed = download.downloaded.length; deadline = Date.now() + 15000; }
     if (result) return result;
   }
   throw new Error('Recording download timed out; partial audio was not imported');

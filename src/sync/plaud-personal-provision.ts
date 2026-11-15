@@ -69,7 +69,8 @@ export class PlaudPersonalIdentityProvisioner {
     let host = typeof payload.region === 'string' ? REGIONS[payload.region] ?? 'https://api.plaud.ai' : 'https://api.plaud.ai';
 
     const post = async (path: string, body: ObjectValue): Promise<ObjectValue> => {
-      for (let attempt = 0; attempt < 2; attempt++) {
+      let retries = 0, redirects = 0;
+      while (true) {
         options.signal?.throwIfAborted();
         let response: Response;
         try {
@@ -84,7 +85,8 @@ export class PlaudPersonalIdentityProvisioner {
           });
         } catch {
           options.signal?.throwIfAborted();
-          if (attempt === 0 && path.endsWith('/sn-sign')) {
+          if (retries === 0 && path.endsWith('/sn-sign')) {
+            retries++;
             await delay(1000, undefined, { signal: options.signal });
             continue;
           }
@@ -93,7 +95,8 @@ export class PlaudPersonalIdentityProvisioner {
         if (!response.ok) {
           // Signing an existing serial is safe to retry. Do not blindly replay
           // key generation after a response was lost or the server returned 5xx.
-          if (attempt === 0 && path.endsWith('/sn-sign') && response.status >= 500) {
+          if (retries === 0 && path.endsWith('/sn-sign') && response.status >= 500) {
+            retries++;
             await delay(1000, undefined, { signal: options.signal });
             continue;
           }
@@ -110,6 +113,7 @@ export class PlaudPersonalIdentityProvisioner {
         const status = envelope.status ?? envelope.code;
         const data = object(envelope.data);
         if (status === -302) {
+          if (redirects++ >= 1) throw new Error('Plaud authorization region could not be resolved.');
           const regionalHost = object(data?.domains)?.api;
           // Do not forward credentials to arbitrary URLs from a server response.
           if (typeof regionalHost !== 'string' || !API_HOSTS.has(regionalHost.replace(/\/$/, ''))) {
@@ -123,7 +127,6 @@ export class PlaudPersonalIdentityProvisioner {
         }
         return data;
       }
-      throw new Error('Plaud authorization region could not be resolved.');
     };
 
     // Check ownership before requesting account keys; no rebind or reset occurs.

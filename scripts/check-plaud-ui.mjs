@@ -24,7 +24,7 @@ try {
     const page = await context.newPage();
     page.setDefaultTimeout(12000);
     const errors = [], unexpected = [];
-    let phase = 'downloading', percent = 42, resumedBytes = 0, cancelled = false, unauthorized = false;
+    let phase = 'downloading', percent = 42, resumedBytes = 0, cancelled = false, unauthorized = false, authorizeSuccess = false;
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/*', async route => {
       const url = new URL(route.request().url());
@@ -38,6 +38,7 @@ try {
       else if (path === '/plaud/device-import/synthetic-job') data = { state: 'running', progress: { stage: phase, percent, receivedBytes: 42 * 1048576, totalBytes: 100 * 1048576, resumedBytes } };
       else if (path === '/plaud/device-cancel') { cancelled = true; data = {}; }
       else if (path === '/plaud/identity') {
+        if (route.request().method() === 'POST' && authorizeSuccess) { unauthorized = false; return route.fulfill({ json: { success: true, data: { authorized: true } } }); }
         if (route.request().method() === 'POST') return route.fulfill({ status: 400, json: { success: false, error: 'Your Plaud session has expired. Sign in again.' } });
         data = { authorized: !unauthorized, serial: '0000000000000001', identifier: 'AA:BB:CC:DD:EE:FF', deviceType: 'notepro' };
       }
@@ -95,7 +96,7 @@ try {
     await page.getByLabel('Jeton de connexion Plaud', { exact: true }).last().fill('synthetic-session');
     await page.getByRole('button', { name: 'Autoriser cet ordinateur', exact: true }).click();
     await page.getByText('Votre session Plaud a expiré. Reconnectez-vous.', { exact: true }).waitFor();
-    if (width >= 1180 && motion === 'reduce') {
+    if (motion === 'reduce') {
       unauthorized = false; cancelled = false; phase = 'converting'; percent = 67;
       await page.goto(origin);
       await page.getByRole('button', { name: 'Récupérer depuis le Plaud', exact: true }).click();
@@ -105,6 +106,8 @@ try {
       await dialog.getByRole('button', { name: 'Importer 1', exact: true }).click();
       await dialog.getByRole('progressbar', { name: 'Conversion audio pour la lecture' }).waitFor();
       assert.equal(await dialog.locator('.plaud-progress-ring > strong').textContent(), '67%');
+      await page.waitForFunction(() => { const copy = document.querySelector('.plaud-import-dialog .plaud-progress-copy'); return copy && copy.getBoundingClientRect().width >= 130; }, null, { timeout: 3000 });
+      assert(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth + 2), `Dialog overflow at ${width}`);
       await page.keyboard.press('Escape'); assert(await dialog.isVisible());
       await page.addScriptTag({ content: axe });
       const dialogViolations = await page.evaluate(async () => (await window.axe.run('.plaud-import-dialog')).violations.filter(v => ['serious', 'critical'].includes(v.impact)).map(v => ({ id: v.id, targets: v.nodes.map(n => n.target) })));
@@ -113,6 +116,17 @@ try {
       await dialog.getByRole('button', { name: 'Annuler', exact: true }).click();
       await dialog.locator('.plaud-live-progress').waitFor({ state: 'detached' }); assert(cancelled);
       console.log(`PASS dialog ${width}px ${theme}: progress, accessibility, busy Escape guard, cancellation`);
+    }
+    if (width === 1440 && theme === 'dark' && motion === 'reduce') {
+      unauthorized = true; authorizeSuccess = true; cancelled = false;
+      await page.goto(origin);
+      await page.getByRole('button', { name: 'Récupérer depuis le Plaud', exact: true }).click();
+      const authorizationDialog = page.getByRole('dialog');
+      await authorizationDialog.getByLabel('Jeton de connexion Plaud', { exact: true }).fill('synthetic-session');
+      await authorizationDialog.getByRole('button', { name: 'Autoriser cet ordinateur', exact: true }).click();
+      await authorizationDialog.getByRole('checkbox', { name: 'Sélectionner l’enregistrement 1', exact: true }).waitFor();
+      assert(!cancelled, 'Completed authorization cleanup must not cancel the recording list');
+      console.log('PASS authorization handoff: recording list survives component cleanup');
     }
     assert.deepEqual(errors, []); assert.deepEqual([...new Set(unexpected)], []);
     results.push({ width, theme, motion, passed: true });

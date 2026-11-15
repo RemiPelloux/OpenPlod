@@ -174,3 +174,18 @@ describe('personal-account authorization', () => {
     expect(identity.bindingToken).toBe('owner-fixture');
   });
 });
+
+
+test('regional routing remains available after a transient signing failure', async () => {
+  const urls: string[] = [];
+  const provisioner = new PlaudPersonalIdentityProvisioner(async url => {
+    urls.push(url);
+    if (urls.length === 1) return json({}, 503);
+    if (urls.length === 2) return json({ status: -302, data: { domains: { api: 'https://api-euc1.plaud.ai' } } });
+    return ok(url.endsWith('sn-sign') ? signData : keyData);
+  });
+  await provisioner.provision({ token: jwt(), serial, identifier });
+  expect(urls).toHaveLength(4);
+  expect(urls[2]).toBe('https://api-euc1.plaud.ai/device-app/device/sn-sign');
+  expect(urls[3]).toBe('https://api-euc1.plaud.ai/device-app/e2ee/gen_key');
+});

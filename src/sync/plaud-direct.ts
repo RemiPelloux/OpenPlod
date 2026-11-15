@@ -138,6 +138,7 @@ export async function importDirectPlaudRecording(sessionId: number, onProgress?:
       });
       // Device bytes, decoded audio and provenance are staged with the playback copy and become
       // visible together with the recording row (REL-03).
+      signal.throwIfAborted();
       report({ stage: 'saving', percent: null });
       const result = await importRecordingFile({ sourcePath: playbackPath, originalFilename: `Plaud-${sessionId}.m4a`,
         provenance: { sourceProvider: 'plaud', sourceTransport: 'ble', sourceRecordingId: `${identity.serial}:${sessionId}` },

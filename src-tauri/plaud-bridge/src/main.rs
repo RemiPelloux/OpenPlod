@@ -250,7 +250,10 @@ async fn run_scan() -> Result<(), String> {
             "detail": "No advertising Plaud found. Wake the device and keep it near this computer.",
         }),
         Some(peripheral) => {
+            #[cfg(target_os = "macos")]
             let address = peripheral.id().to_string();
+            #[cfg(not(target_os = "macos"))]
+            let address = peripheral.address().to_string();
             let properties = peripheral.properties().await.ok().flatten();
             let name = properties
                 .as_ref()

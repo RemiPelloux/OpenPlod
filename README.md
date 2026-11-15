@@ -152,8 +152,10 @@ No browser cookie needs to be copied. Keep the recorder awake and disconnect
 other Bluetooth clients. Passwords and MFA remain in Plaud's own sign-in page.
 
 **Cancel** stops sign-in/provisioning or Bluetooth verification. Closing the login
-window also cancels sign-in. Temporary login cookies are not persisted; recorder
-keys are saved atomically with owner-only permissions. A transient serial-signing
+window also cancels sign-in. On Windows, private sign-in requires WebView2
+101.0.1210.39 or newer; older runtimes may persist login cookies because they
+do not apply incognito mode. On supported runtimes, temporary login cookies
+use the private session. Recorder keys are saved atomically with owner-only permissions. A transient serial-signing
 failure is retried once; uncertain key-generation requests are not replayed.
 If keys are saved but Bluetooth is unavailable, use **Verify Bluetooth access**
 to retry with the existing keys. Removing authorization cancels pending work and

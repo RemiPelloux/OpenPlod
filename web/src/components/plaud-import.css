@@ -50,7 +50,7 @@
   .plaud-import-dialog { width: calc(100% - 16px); max-height: calc(100dvh - 24px); }
   .plaud-import-heading { padding: 20px 16px; }
   .plaud-import-body { padding: 16px; }
-  .plaud-import-footer { padding: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .plaud-import-footer { flex-direction: column; align-items: stretch; padding: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
   .plaud-import-row label { gap: 8px; }
   .plaud-import-row label > svg { display: none; }
   .plaud-import-tabs button { padding: 7px 9px; }
@@ -63,3 +63,5 @@
   @starting-style { .plaud-import-dialog:not([data-keyboard="true"]) { transform: translate(-50%, -50%); } }
   .plaud-import-dialog .animate-spin { animation: none; }
 }
+
+.plaud-import-dialog .plaud-live-progress { flex-basis: 100%; }

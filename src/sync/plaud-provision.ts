@@ -127,7 +127,8 @@ const describePlaudError = (status: number, detail: string): string => {
 export class PlaudIdentityProvisioner {
   constructor(private readonly fetcher: Fetcher = fetch) {}
 
-  private async post(path: string, token: string, domain: PlaudDomain, body?: unknown): Promise<Record<string, unknown>> {
+  private async post(path: string, token: string, domain: PlaudDomain, body?: unknown, signal?: AbortSignal): Promise<Record<string, unknown>> {
+    signal?.throwIfAborted();
     if (!isPlaudDomain(domain)) throw new Error('Unsupported Plaud region.');
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -135,9 +136,10 @@ export class PlaudIdentityProvisioner {
     try {
       response = await this.fetcher(`https://${domain}${path}`, {
         method: 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body),
-        redirect: 'error', signal: AbortSignal.timeout(20_000),
+        redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000),
       });
     } catch {
+      signal?.throwIfAborted();
       throw new Error('Plaud could not be reached to authorize this recorder.');
     }
     if (!response.ok) {
@@ -153,8 +155,8 @@ export class PlaudIdentityProvisioner {
   }
 
   /** `POST /developer/api/open/partner/sdk/gen-key` */
-  async generateKeyPair(token: string, domain: PlaudDomain = DEFAULT_PLAUD_DOMAIN) {
-    const result = await this.post('/developer/api/open/partner/sdk/gen-key', token, domain);
+  async generateKeyPair(token: string, domain: PlaudDomain = DEFAULT_PLAUD_DOMAIN, signal?: AbortSignal) {
+    const result = await this.post('/developer/api/open/partner/sdk/gen-key', token, domain, undefined, signal);
     const publicKey = typeof result.public_key === 'string' ? result.public_key : '';
     const privateKey = typeof result.private_key === 'string' ? result.private_key : '';
     if (!publicKey || !privateKey) throw new Error('Plaud returned no recorder key material.');
@@ -162,23 +164,23 @@ export class PlaudIdentityProvisioner {
   }
 
   /** `POST /developer/api/open/partner/sdk/sn-sign` */
-  async signSerial(token: string, serial: string, domain: PlaudDomain = DEFAULT_PLAUD_DOMAIN, deviceType = deviceTypeForSerial(serial)) {
-    const result = await this.post('/developer/api/open/partner/sdk/sn-sign', token, domain, { type: deviceType, sn: serial });
+  async signSerial(token: string, serial: string, domain: PlaudDomain = DEFAULT_PLAUD_DOMAIN, deviceType = deviceTypeForSerial(serial), signal?: AbortSignal) {
+    const result = await this.post('/developer/api/open/partner/sdk/sn-sign', token, domain, { type: deviceType, sn: serial }, signal);
     const signature = typeof result.signature === 'string' ? result.signature : '';
     if (!signature) throw new Error('Plaud returned no recorder signature.');
     return signature;
   }
 
   /** Provision a complete identity for one recorder. */
-  async provision(options: { token: string; serial: string; identifier: string; domain?: PlaudDomain }): Promise<ProvisionedIdentity> {
+  async provision(options: { token: string; serial: string; identifier: string; domain?: PlaudDomain; signal?: AbortSignal }): Promise<ProvisionedIdentity> {
     const { token, serial, identifier } = options;
     const domain = options.domain ?? DEFAULT_PLAUD_DOMAIN;
     if (!PLAUD_SERIAL_PATTERN.test(serial)) throw new Error('A 16-character Plaud serial number is required.');
     if (!isBluetoothIdentifier(identifier)) throw new Error('A Bluetooth address for the recorder is required.');
     const claims = parseAccessToken(token);
     const deviceType = deviceTypeForSerial(serial);
-    const { publicKey, privateKey } = await this.generateKeyPair(token, domain);
-    const signature = await this.signSerial(token, serial, domain, deviceType);
+    const { publicKey, privateKey } = await this.generateKeyPair(token, domain, options.signal);
+    const signature = await this.signSerial(token, serial, domain, deviceType, options.signal);
     return { identifier, serial, bindingToken: claims.sub, publicKey, privateKey, signature, deviceType };
   }
 }
