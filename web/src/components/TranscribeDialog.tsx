@@ -39,7 +39,22 @@ export function TranscribeDialog({ recordingId, title, onClose, onQueued }: { re
   return <NoteDialog title={t('Transcribe recording')} description={title} onClose={onClose} busy={busy}><form onSubmit={async event => {
     event.preventDefault(); if (!settings) return; setBusy(true); setError('')
     try {
-      await api.transcribe(recordingId, { ...overrides, ...(costAccepted ? { confirmCost: true } : {}) })
+      let expectedCustomEndpoint: string | undefined
+      if (engine === 'custom') {
+        const fresh = await aiSettingsApi.get()
+        const freshLocal = customEndpointIsLocal(fresh.customBaseUrl)
+        if (fresh.customBaseUrl !== settings.customBaseUrl || freshLocal !== customLocal) {
+          setSettings({ ...settings, customBaseUrl: fresh.customBaseUrl, privacyMode: fresh.privacyMode, transcriptionModel: '' })
+          setServerModels([])
+          setCostAccepted(false)
+          throw new Error(t('The custom endpoint changed. Review the destination and confirm again.'))
+        }
+        if (fresh.privacyMode === 'local-only' && !freshLocal) {
+          throw new Error(t('Local-only mode blocks this provider. Change AI settings before sending data.'))
+        }
+        expectedCustomEndpoint = fresh.customBaseUrl
+      }
+      await api.transcribe(recordingId, { ...overrides, expectedCustomEndpoint, ...(costAccepted ? { confirmCost: true } : {}) })
       onQueued(); onClose()
     } catch (e) { setError(e instanceof Error ? e.message : t('Could not queue transcription.')) } finally { setBusy(false) }
   }}>

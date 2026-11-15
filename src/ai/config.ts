@@ -36,7 +36,7 @@ export const aiConfigSchema = z.object({
   transcriptionLanguage: z.string().regex(/^(auto|[a-z]{2,3}(-[A-Z]{2})?)$/).default('auto'),
   transcriptionDiarize: z.boolean().default(false),
   transcriptionVocabulary: z.array(z.string().trim().min(1).max(80)).max(100).default([]),
-  transcriptionFallback: z.array(z.enum(speechProviders)).max(4).default([]),
+  transcriptionFallback: z.array(z.enum(speechProviders).exclude(['custom'])).max(4).default([]),
   /** One-off context prompt for providers that accept one (see capabilities.prompt). */
   transcriptionPrompt: z.string().trim().max(2000).default(''),
   /** Default transcription profile id, or '' for none. */
@@ -70,6 +70,9 @@ export function readSettings(database: Database): Record<string, string> {
 export function aiConfigFromSettings(values: Record<string, string>): AiConfig {
   // Legacy engine/key settings remain valid; all new routing is explicit.
   const raw = values.aiConfig ? JSON.parse(values.aiConfig) : { transcriptionEngine: values.transcriptionEngine || 'whisper' };
+  if (Array.isArray(raw?.transcriptionFallback)) {
+    raw.transcriptionFallback = raw.transcriptionFallback.filter((provider: unknown) => provider !== 'custom');
+  }
   return aiConfigSchema.parse(raw);
 }
 export function readAiConfig(database: Database): AiConfig {

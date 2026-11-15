@@ -2,7 +2,8 @@ import { expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { OpenAiEngine } from './openai';
 import { createAiSettingsApi } from '../api/ai-settings';
-import { aiConfigSchema } from '../ai/config';
+import { estimateSpeechUsd } from '../ai/pricing';
+import { aiConfigFromSettings, aiConfigSchema } from '../ai/config';
 import { TranscriptionRouter } from './router';
 const fake = (fn: (url: string, init: RequestInit) => Promise<Response>) => fn as typeof fetch;
 const audio = Buffer.from('fixture');
@@ -82,4 +83,15 @@ test('a saved custom key stays with its endpoint when checking or saving a diffe
   expect(storedKey.get()).toEqual({ value: 'fixture-key' });
   expect((await save('https://other.example/v1')).status).toBe(200);
   expect(storedKey.get()).toBeNull();
+});
+
+test('custom providers require a chosen model and cannot be a fallback', () => {
+  expect(aiConfigSchema.safeParse({ transcriptionFallback: ['custom'] }).success).toBe(false);
+  expect(aiConfigFromSettings({ aiConfig: JSON.stringify({ transcriptionFallback: ['custom', 'whisper'] }) }).transcriptionFallback).toEqual(['whisper']);
+});
+
+test('custom models with inherited property names still have unknown prices', () => {
+  for (const model of ['constructor', 'toString', '__proto__']) {
+    expect(estimateSpeechUsd('custom', model, 60)).toBeNull();
+  }
 });

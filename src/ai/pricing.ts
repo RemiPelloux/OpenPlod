@@ -36,7 +36,8 @@ export const textPrices: Record<TextProvider, Record<string, TextPrice>> = {
 
 export function speechPrice(provider: SpeechProvider, model: string | undefined | null): SpeechPrice {
   const table = speechPrices[provider];
-  return table[model || Object.keys(table)[0]] ?? { usdPerMinute: null, note: 'No documented price for this model.' };
+  const key = model || Object.keys(table)[0];
+  return key && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : { usdPerMinute: null, note: 'No documented price for this model.' };
 }
 
 /** Estimated USD for `seconds` of audio, or null when the price (or the duration) is unknown. */

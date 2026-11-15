@@ -66,7 +66,7 @@ export function initializeJobRequests(database: Database) {
  * transcription of the same recording is queued or running, since the queue
  * would otherwise hand back that job and silently drop these options.
  */
-export async function submitTranscription(database: Database, queue: JobQueue, input: { recordingId: string; overrides?: unknown; idempotencyKey?: string | null; confirmCost?: boolean }): Promise<{ job: Job; plan: TranscriptionPlan; replayed: boolean }> {
+export async function submitTranscription(database: Database, queue: JobQueue, input: { recordingId: string; overrides?: unknown; idempotencyKey?: string | null; confirmCost?: boolean; expectedCustomEndpoint?: unknown }): Promise<{ job: Job; plan: TranscriptionPlan; replayed: boolean }> {
   const overrides = transcriptionOverrides(input.overrides);
   const key = input.idempotencyKey ? idempotencyKeySchema.parse(input.idempotencyKey) : null;
   const requestHash = hash({ type: 'process-recording', recordingId: input.recordingId, overrides });
@@ -81,6 +81,9 @@ export async function submitTranscription(database: Database, queue: JobQueue, i
     }
   }
   const { config, filePath, plan } = planTranscription(database, input.recordingId, overrides);
+  if (input.expectedCustomEndpoint !== undefined && input.expectedCustomEndpoint !== config.customBaseUrl) {
+    fail(409, 'custom_endpoint_changed', 'The custom endpoint changed. Review the destination and confirm again.');
+  }
   if (queue.activeJob('process-recording', input.recordingId)) fail(409, 'job_active', 'This recording is already being processed. Cancel that job before reprocessing.');
   // AI-10: an estimate over the per-job threshold or the remaining budget needs explicit confirmation.
   const costConfirmed = input.confirmCost === true;

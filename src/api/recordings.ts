@@ -1057,11 +1057,11 @@ app.post('/:id/reprocess', async (c) => {
   const id = c.req.param('id');
   try {
     const body = await c.req.text();
-    let overrides: Record<string, unknown>, confirmCost = false;
-    try { ({ confirmCost, ...overrides } = body.trim() ? JSON.parse(body) : {}); }
+    let overrides: Record<string, unknown>, confirmCost = false, expectedCustomEndpoint: unknown;
+    try { ({ confirmCost, expectedCustomEndpoint, ...overrides } = body.trim() ? JSON.parse(body) : {}); }
     catch { return c.json({ success: false, error: 'Invalid or privacy-blocked transcription options.' }, 400); }
     // KB-06: a retried request with the same Idempotency-Key returns the same job.
-    const { job, replayed } = await submitTranscription(sqlite, jobQueue, { recordingId: id, overrides, idempotencyKey: c.req.header('Idempotency-Key'), confirmCost: confirmCost === true });
+    const { job, replayed } = await submitTranscription(sqlite, jobQueue, { recordingId: id, overrides, expectedCustomEndpoint, idempotencyKey: c.req.header('Idempotency-Key'), confirmCost: confirmCost === true });
     return c.json({ success: true, message: replayed ? 'Already queued for this request' : 'Queued for reprocessing', data: { jobId: job.id, state: job.status, replayed } });
   } catch (error) {
     if (error instanceof JobSubmitError) return c.json({ success: false, code: error.code, error: error.status === 404 ? 'Active recording not found' : error.message, ...(error.data ? { data: error.data } : {}) }, error.status);
