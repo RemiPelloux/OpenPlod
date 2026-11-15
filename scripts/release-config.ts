@@ -17,6 +17,13 @@ import { resolve } from 'node:path';
 
 const env = (name: string) => process.env[name]?.trim() || '';
 const updater = Boolean(env('TAURI_UPDATER_PUBKEY') && env('TAURI_SIGNING_PRIVATE_KEY'));
+const endpoint = env('OPENPLOD_UPDATE_ENDPOINT');
+if (endpoint) {
+  const url = new URL(endpoint);
+  if (url.protocol !== 'https:' || url.username || url.password || url.hash) {
+    throw new Error('OPENPLOD_UPDATE_ENDPOINT must be an HTTPS URL without credentials or a fragment.');
+  }
+}
 const macSigning = Boolean(env('APPLE_SIGNING_IDENTITY'));
 const notarization = Boolean((env('APPLE_ID') && env('APPLE_PASSWORD') && env('APPLE_TEAM_ID'))
   || (env('APPLE_API_KEY') && env('APPLE_API_ISSUER') && env('APPLE_API_KEY_PATH')));
@@ -26,7 +33,7 @@ const config = {
     createUpdaterArtifacts: updater,
     macOS: macSigning ? { signingIdentity: env('APPLE_SIGNING_IDENTITY'), hardenedRuntime: true } : { signingIdentity: '-' },
   },
-  plugins: { updater: { pubkey: updater ? env('TAURI_UPDATER_PUBKEY') : '' } },
+  plugins: { updater: { pubkey: updater ? env('TAURI_UPDATER_PUBKEY') : '', ...(endpoint ? { endpoints: [endpoint] } : {}) } },
 };
 
 const output = resolve(process.argv[2] || 'src-tauri/tauri.release.conf.json');

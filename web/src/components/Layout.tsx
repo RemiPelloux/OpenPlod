@@ -1,3 +1,4 @@
+import { UpdateNotice } from '@/components/UpdatePanel'
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -362,6 +363,7 @@ export function Layout() {
               {syncMessage}
             </div>
           )}
+          {!captureMode && <UpdateNotice />}
           <main
             ref={pageScrollRef}
             className={

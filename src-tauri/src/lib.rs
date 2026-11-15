@@ -26,6 +26,7 @@ struct RuntimeInfo {
   service_origin: Option<String>,
   pairing_token: Option<String>,
   lan_address: Option<String>,
+  updater_enabled: bool,
 }
 
 #[cfg(desktop)]
@@ -127,8 +128,17 @@ fn start_service(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     service_origin: Some(format!("http://127.0.0.1:{SERVICE_PORT}")),
     pairing_token: Some(pairing_token),
     lan_address: local_lan_address(),
+    updater_enabled: app.config().plugins.0.get("updater")
+      .and_then(|value| value.get("pubkey")).and_then(|value| value.as_str())
+      .is_some_and(|key| !key.trim().is_empty()),
   });
   Ok(())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn restart_after_update(app: tauri::AppHandle) {
+  app.restart();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -147,6 +157,7 @@ pub fn run() {
         service_origin: None,
         pairing_token: None,
         lan_address: None,
+        updater_enabled: false,
       });
 
       Ok(())
@@ -159,7 +170,7 @@ pub fn run() {
   #[cfg(desktop)]
   let builder = builder.invoke_handler(tauri::generate_handler![
     runtime_info, plaud::plaud_command, desktop_exports::export_document, desktop_exports::export_audio,
-    desktop_exports::pick_export_folder
+    desktop_exports::pick_export_folder, restart_after_update
   ]);
   #[cfg(mobile)]
   let builder = builder.invoke_handler(tauri::generate_handler![runtime_info, plaud::plaud_command]);

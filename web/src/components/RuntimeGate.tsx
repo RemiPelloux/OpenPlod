@@ -1,3 +1,4 @@
+import { startDesktopUpdates } from '@/lib/desktop-updates'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowRight, Keyboard, Loader2, Radio, ScanLine, ShieldCheck, X } from "@/components/icons"
 import { Brand } from '@/components/Brand'
@@ -19,7 +20,10 @@ export function RuntimeGate({ children }: { children: ReactNode }) {
     let disposed = false
     initializeRuntime()
       .then(async config => {
-        if (config.mode === 'desktop') await waitForDesktop(config.serviceOrigin)
+        if (config.mode === 'desktop') {
+          await waitForDesktop(config.serviceOrigin)
+          await startDesktopUpdates()
+        }
         if (!disposed) setRuntime(config)
       })
       .catch(initError => {
