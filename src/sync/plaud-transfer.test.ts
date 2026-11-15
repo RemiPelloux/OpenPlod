@@ -78,8 +78,14 @@ test('recording handshake rejects access denial and implements serial-driven sec
   const accepted = Buffer.from('01010000140000000100000156000000', 'hex');
   const replies = [serial, accepted];
   const result = await recordingHandshake({ write: async packet => { writes.push(Buffer.from(packet)); }, packet: async () => replies.shift()! }, 'a'.repeat(32));
-  expect(result).toEqual({ protocol: 20, channels: 1 });
+  expect(result).toEqual({ protocol: 20, channels: 1, oggAudio: true });
   expect(writes.map(packet => packet[5])).toEqual([0, 1]);
+  // Recorders that stream raw Opus packets report isOggAudio = 0 and must be accepted.
+  const raw = Buffer.from(accepted); raw[11] = 0;
+  const rawReplies = [Buffer.from(serial), raw];
+  await expect(recordingHandshake(
+    { write: async () => {}, packet: async () => rawReplies.shift()! }, 'a'.repeat(32),
+  )).resolves.toEqual({ protocol: 20, channels: 1, oggAudio: false });
   const rejected = Buffer.from(accepted); rejected[3] = 2;
   await expect(recordingHandshake({ write: async () => {}, packet: async () => rejected }, 'a'.repeat(32))).rejects.toThrow('rejected');
 });

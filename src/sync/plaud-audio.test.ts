@@ -39,3 +39,19 @@ test('Plaud file unwrap validates the negotiated format and wipes symmetric key 
   input[52] = 2;
   expect(() => parsePlaudAudioHeader(input)).toThrow('Unsupported');
 });
+
+test('decodes a recorder that streams raw Opus packets instead of Ogg', async () => {
+  // Plaud Note layout: byte 48 is 5, the packet size sits at 144, and every
+  // 80-byte segment is one Opus packet encrypted with its own keystream.
+  const key = Buffer.alloc(32, 7), nonce = Buffer.alloc(12, 9), header = Buffer.alloc(512);
+  header.write('PLAUD.AI'); header.writeUInt16LE(1, 8); header.writeUInt16LE(512, 10);
+  header.writeUInt16LE(5, 48); header.writeUInt16LE(1, 50); header.writeUInt16LE(1, 52);
+  header.writeUInt16LE(80, 144); nonce.copy(header, 132);
+  const packets = Buffer.alloc(160, 0xb8);
+  const encrypted = Buffer.concat([0, 1].map(index =>
+    Buffer.from(chacha20(key, nonce, packets.subarray(index * 80, index * 80 + 80)))));
+  const result = await decodePlaudAudio(Buffer.concat([header, encrypted]), async () => key);
+  expect(result.integrity.channels).toBe(1);
+  expect(result.integrity.pages).toBeGreaterThan(2);
+  expect(result.audio.subarray(0, 4).toString()).toBe('OggS');
+});

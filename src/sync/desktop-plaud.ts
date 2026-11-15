@@ -43,7 +43,7 @@ export function parsePlaudProbe(output: string): DesktopPlaudProbe {
       return unavailable('The Bluetooth scanner returned an invalid result.');
     }
     if (!result.detected) return unavailable(result.detail);
-    const advertised = typeof result.serial === 'string' && /^[0-9A-F]{16}$/.test(result.serial)
+    const advertised = typeof result.serial === 'string' && /^[0-9A-F]{16,18}$/.test(result.serial)
       ? { serial: result.serial, protocolVersion: Number.isInteger(result.protocolVersion) ? result.protocolVersion : null }
       : serialFromManufacturerData(result.manufacturerData);
     return {
