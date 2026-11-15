@@ -348,7 +348,7 @@ export function Dashboard() {
                 <button type="button" className="studio-export-action" disabled={!activeRecording || exporting}
                   title={activeRecording?.title}
                   onClick={() => { if (activeRecording) void exportAudio(activeRecording); }}>
-                  <Share2 /><span>Export</span>
+                  <Share2 /><span>{t("Export")}</span>
                 </button>
               )}
             </div>
