@@ -13,7 +13,7 @@ export class PlaudAutoImport {
   }
   enabled() { return (this.database.query("SELECT value FROM user_settings WHERE key='directPlaudAutoImport'").get() as { value: string } | null)?.value === 'true'; }
   set(enabled: boolean) {
-    if (enabled && !this.adapter.configured()) throw new Error('Authorize this Note Pro on the Mac first.');
+    if (enabled && !this.adapter.configured()) throw new Error('Authorize your Plaud recorder on this computer first.');
     this.database.query("INSERT INTO user_settings(key,value) VALUES('directPlaudAutoImport',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(enabled));
     return this.status();
   }

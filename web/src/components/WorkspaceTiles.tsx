@@ -8,6 +8,7 @@ import {
 } from "@/components/icons";
 import { api, type PlaudStatus, type Settings } from "@/lib/api";
 import { getRuntime } from "@/lib/runtime";
+import { plaudModelImage, plaudModelName, usePlaudModel } from "@/lib/plaud-model";
 import { t } from "@/i18n";
 
 export function WorkspaceTiles() {
@@ -19,6 +20,8 @@ export function WorkspaceTiles() {
   }, []);
   const [plaud, setPlaud] = useState<PlaudStatus | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const model = usePlaudModel(plaud?.deviceModel);
+  const device = plaudModelName(model) ?? t("Plaud recorder");
   useEffect(() => {
     let stopped = false;
     if (getRuntime().mode === "mobile") return;
@@ -37,7 +40,7 @@ export function WorkspaceTiles() {
   return (
     <section className="workspace-tiles" aria-label={t("Workspace connections")}>
       <Link className="workspace-tile plaud-tile" to="/devices">
-        <img src="/plaud-note-pro.png" alt="Plaud Note Pro" />
+        <img src={plaudModelImage(model)} alt={device} />
         <div>
           <strong className={plaud?.deviceDetected ? "device-present" : ""}>
             {plaud?.deviceDetected
@@ -45,10 +48,10 @@ export function WorkspaceTiles() {
               : unavailable
                 ? t("Plaud unavailable")
                 : plaud
-                  ? "Plaud Note Pro"
+                  ? device
                   : t("Checking Plaud...")}
           </strong>
-          <p>Plaud Note Pro</p>
+          <p>{device}</p>
         </div>
         <ChevronRight className="tile-arrow" />
       </Link>

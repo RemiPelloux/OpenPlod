@@ -46,6 +46,7 @@ import { formatDuration } from '@/lib/utils'
 import { formatDate, t } from '@/i18n'
 import { exportDocument, exportOriginalAudio, recordingMarkdown, safeDocumentName as safeName } from '@/lib/document-export'
 import { deviceCommand, supportsPlaudDevice, vaultArguments } from '@/lib/plaud-device'
+import { plaudModelFromSourceId, plaudModelName } from '@/lib/plaud-model'
 
 type BusyAction = 'transcribing' | 'summarizing' | 'saving' | 'forwarding' | null
 type DocumentMode = 'preview' | 'edit' | 'timestamps' | 'studio'
@@ -188,7 +189,7 @@ export function RecordingDetail({ backPath = '/' }: { backPath?: string }) {
   const summary = recording?.summary
   const summaryMarkdown = useMemo(() => summary ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown> : null, [summary])
   const sourceLabel = recording?.sourceProvider === 'plaud'
-    ? 'Plaud Note Pro'
+    ? plaudModelName(plaudModelFromSourceId(recording.sourceRecordingId)) ?? 'Plaud'
     : recording?.sourceProvider === 'opennotes' ? t('OpenPlod mobile') : t('Local import')
 
   const togglePlay = useCallback(() => {

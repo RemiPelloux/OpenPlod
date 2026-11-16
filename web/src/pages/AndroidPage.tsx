@@ -67,7 +67,7 @@ export function AndroidPage() {
       </section>
       <aside className="android-details" aria-label={t('Connection details')}>
         <section><div className="android-section-title"><HardDrive /><h2>{t('Recording vault')}</h2></div><dl><div><dt>{t('Service')}</dt><dd className={`android-health ${health}`}><span role="status">{health === 'checking' ? t('Checking...') : health === 'available' ? t('Reachable') : t('Unavailable')}</span></dd></div><div><dt>{t('Access')}</dt><dd>{mobile ? t('Paired desktop') : desktop ? t('This desktop') : t('Browser')}</dd></div>{desktop && <div><dt>{t('Phone connection')}</dt><dd>{t('Not monitored')}</dd></div>}</dl>{health === 'unavailable' && <p className="android-status-error" role="alert">{t('The vault did not respond. Check the desktop app and network, then retry.')}</p>}</section>
-        <section><div className="android-section-title"><Bluetooth /><h2>Plaud Note Pro</h2></div><Link className="android-destination" to="/devices"><span>{t('Device access')}<small>{t('Bluetooth & recordings')}</small></span><ChevronRight /></Link></section>
+        <section><div className="android-section-title"><Bluetooth /><h2>{t('Plaud recorder')}</h2></div><Link className="android-destination" to="/devices"><span>{t('Device access')}<small>{t('Bluetooth & recordings')}</small></span><ChevronRight /></Link></section>
         <section><div className="android-section-title"><ShieldCheck /><h2>{t('Storage & privacy')}</h2></div><dl><div><dt>{t('Original audio')}</dt><dd>{t('Desktop vault')}</dd></div><div><dt>{t('Mobile storage')}</dt><dd>{t('Local cache & queue')}</dd></div></dl></section>
       </aside>
     </div>
