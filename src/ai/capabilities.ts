@@ -17,8 +17,9 @@ const VOXTRAL_LANGUAGES = ['en', 'es', 'fr', 'pt', 'hi', 'de', 'nl', 'it'] as co
  * timed utterances when speaker labels are on.
  */
 export const speechCapabilities = {
-  whisper: { label: 'Whisper.cpp', local: true, models: ['base', 'small', 'medium'], timestamps: true, diarization: false, vocabulary: true, prompt: true, maxBytes: null, formats: ['wav', 'm4a', 'mp3', 'flac', 'ogg', 'webm', 'aac'], streaming: false,
-    languages: { base: WHISPER_LANGUAGES, small: WHISPER_LANGUAGES, medium: WHISPER_LANGUAGES }, timestampGranularity: { base: 'segment', small: 'segment', medium: 'segment' } },
+  whisper: { label: 'Whisper.cpp', local: true, models: ['base', 'small', 'medium', 'large-v3-turbo', 'large-v3'], timestamps: true, diarization: false, vocabulary: true, prompt: true, maxBytes: null, formats: ['wav', 'm4a', 'mp3', 'flac', 'ogg', 'webm', 'aac'], streaming: false,
+    languages: { base: WHISPER_LANGUAGES, small: WHISPER_LANGUAGES, medium: WHISPER_LANGUAGES, 'large-v3-turbo': WHISPER_LANGUAGES, 'large-v3': WHISPER_LANGUAGES },
+    timestampGranularity: { base: 'segment', small: 'segment', medium: 'segment', 'large-v3-turbo': 'segment', 'large-v3': 'segment' } },
   mistral: { label: 'Mistral Voxtral', local: false, models: ['voxtral-mini-latest'], timestamps: true, diarization: false, vocabulary: false, prompt: false, maxBytes: null, formats: ['wav', 'm4a', 'mp3', 'flac', 'ogg', 'webm', 'aac'], streaming: false,
     languages: { 'voxtral-mini-latest': VOXTRAL_LANGUAGES }, timestampGranularity: { 'voxtral-mini-latest': 'segment' } },
   deepgram: { label: 'Deepgram', local: false, models: ['nova-2', 'nova-3'], timestamps: true, diarization: true, vocabulary: true, prompt: false, maxBytes: null, formats: ['wav', 'm4a', 'mp3', 'flac', 'ogg', 'webm', 'aac'], streaming: false,

@@ -97,6 +97,12 @@ fn start_service(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     .env("DATABASE_URL", app_data_dir.join("openplod.db"))
     .env("OPENPLOD_LIBRARY_PATH", library_dir)
     .env("OPENPLOD_PAIRING_TOKEN", &pairing_token);
+  // Local Whisper models (ggml-<model>.bin) live in the app data folder unless the
+  // user already chose a folder. The engine still falls back to the old default.
+  let command = match std::env::var_os("WHISPER_MODELS_DIR") {
+    Some(_) => command,
+    None => command.env("WHISPER_MODELS_DIR", app_data_dir.join("whisper-models")),
+  };
   // Every desktop platform speaks Bluetooth through the same bundled
   // `plaud-bridge` binary (CoreBluetooth, BlueZ or WinRT under one protocol).
   let command = match ble_bridge_path() {
