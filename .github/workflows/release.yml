@@ -86,6 +86,8 @@ jobs:
             fi
           done
       - name: Write release configuration
+        env:
+          OPENPLOD_UPDATE_ENDPOINT: ${{ vars.OPENPLOD_UPDATE_ENDPOINT }}
         run: bun run scripts/release-config.ts
       - name: Build bundles
         shell: bash

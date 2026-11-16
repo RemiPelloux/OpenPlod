@@ -7,10 +7,12 @@ export interface RuntimeConfig {
   serviceOrigin: string
   pairingToken: string
   lanAddress: string | null
+  updaterEnabled?: boolean
   paired: boolean
 }
 
 interface NativeRuntimeInfo {
+  updaterEnabled?: boolean
   mode: 'desktop' | 'mobile'
   serviceOrigin: string | null
   pairingToken: string | null
@@ -45,6 +47,7 @@ export async function initializeRuntime(): Promise<RuntimeConfig> {
       pairingToken: native.pairingToken ?? '',
       lanAddress: native.lanAddress,
       paired: true,
+      updaterEnabled: native.updaterEnabled === true,
     }
     return runtime
   }
