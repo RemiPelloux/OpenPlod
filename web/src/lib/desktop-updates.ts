@@ -1,3 +1,4 @@
+import { getVersion } from '@tauri-apps/api/app'
 import { invoke } from '@tauri-apps/api/core'
 import type { Update } from '@tauri-apps/plugin-updater'
 import { getRuntime } from './runtime'
@@ -34,15 +35,21 @@ export async function installDesktopUpdate(restart = false) {
   if (state.kind !== 'ready' || !pending) return
   const update = pending
   publish({ kind: 'installing' })
-  // Never loop on a failed installer at the next startup.
-  if (restart) localStorage.setItem(attemptedKey, update.version)
+  pending = null
   try {
-    await update.install()
-    pending = null
+    // Never loop on a failed installer at the next startup.
+    if (restart) localStorage.setItem(attemptedKey, update.version)
+    try {
+      await invoke('stop_update_service')
+      await update.install()
+      if (restart) await invoke('restart_after_update')
+    } finally {
+      // Windows exits inside install(). On other platforms, restore the service
+      // whenever this window stays open, including after an installation error.
+      await invoke('restore_update_service')
+    }
     publish({ kind: 'installed' })
-    if (restart) await invoke('restart_after_update')
   } catch (error) {
-    pending = null
     publish({ kind: 'error', message: error instanceof Error ? error.message : typeof error === 'string' ? error : undefined })
   } finally {
     await update.close().catch(() => {})
@@ -54,10 +61,13 @@ export async function checkDesktopUpdate(installOnStartup = false) {
   publish({ kind: 'checking' })
   let update: Update | null = null
   try {
+    const attempted = localStorage.getItem(attemptedKey)
+    if (attempted && await getVersion().catch(() => null) === attempted) {
+      localStorage.removeItem(attemptedKey)
+    }
     const { check } = await import('@tauri-apps/plugin-updater')
     update = await check({ timeout: 15000 })
     if (!update) {
-      localStorage.removeItem(attemptedKey)
       publish({ kind: 'current' })
       return
     }
