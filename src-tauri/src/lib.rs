@@ -115,6 +115,18 @@ fn start_service(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
       "OPENPLOD_SCAN_SCRIPT",
       app.path().resolve("resources/scan-plaud.swift", BaseDirectory::Resource)?,
     );
+  // Apps opened from Finder or the Dock inherit launchd's minimal PATH
+  // (/usr/bin:/bin:/usr/sbin:/sbin), which omits Homebrew. The sidecar spawns
+  // ffmpeg/ffprobe (and whisper-cli) by name, so prepend the standard Homebrew
+  // prefixes for Apple Silicon and Intel.
+  #[cfg(target_os = "macos")]
+  let command = command.env(
+    "PATH",
+    format!(
+      "/opt/homebrew/bin:/usr/local/bin:{}",
+      std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin:/usr/sbin:/sbin".into())
+    ),
+  );
   let (mut events, child) = command.spawn()?;
   tauri::async_runtime::spawn(async move {
     // Drain sidecar output without persisting potentially private request details.
