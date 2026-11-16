@@ -31,6 +31,8 @@ export function setAutoInstall(enabled: boolean) {
   localStorage.setItem(autoKey, String(enabled))
 }
 
+export const ensureDesktopService = () => invoke('ensure_desktop_service')
+
 export async function installDesktopUpdate(restart = false) {
   if (state.kind !== 'ready' || !pending) return
   const update = pending
@@ -44,9 +46,9 @@ export async function installDesktopUpdate(restart = false) {
       await update.install()
       if (restart) await invoke('restart_after_update')
     } finally {
-      // Windows exits inside install(). On other platforms, restore the service
-      // whenever this window stays open, including after an installation error.
-      await invoke('restore_update_service')
+      // At startup RuntimeGate starts the service after the update decision.
+      // A manual install already has a running workspace to restore.
+      if (!restart) await ensureDesktopService()
     }
     publish({ kind: 'installed' })
   } catch (error) {

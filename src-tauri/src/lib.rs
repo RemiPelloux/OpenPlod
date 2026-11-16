@@ -123,20 +123,22 @@ fn spawn_sidecar(app: &tauri::AppHandle, pairing_token: &str) -> Result<CommandC
 }
 
 #[cfg(desktop)]
-fn start_service(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+fn initialize_desktop_runtime(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
   let app_data_dir = app.path().app_data_dir()?;
   fs::create_dir_all(app_data_dir.join("recordings"))?;
   let pairing_token = read_or_create_token(&app_data_dir)?;
-  let child = spawn_sidecar(app.handle(), &pairing_token)?;
-  app.manage(SidecarState(Mutex::new(Some(child))));
+  let updater_enabled = app.config().plugins.0.get("updater")
+    .and_then(|value| value.get("pubkey")).and_then(|value| value.as_str())
+    .is_some_and(|key| !key.trim().is_empty());
+  // Starting the sidecar resumes queued jobs. Wait for the startup update decision.
+  let child = if updater_enabled { None } else { Some(spawn_sidecar(app.handle(), &pairing_token)?) };
+  app.manage(SidecarState(Mutex::new(child)));
   app.manage(RuntimeInfo {
     mode: "desktop",
     service_origin: Some(format!("http://127.0.0.1:{SERVICE_PORT}")),
     pairing_token: Some(pairing_token),
     lan_address: local_lan_address(),
-    updater_enabled: app.config().plugins.0.get("updater")
-      .and_then(|value| value.get("pubkey")).and_then(|value| value.as_str())
-      .is_some_and(|key| !key.trim().is_empty()),
+    updater_enabled,
   });
   Ok(())
 }
@@ -158,7 +160,7 @@ fn stop_sidecar(state: &SidecarState) -> Result<(), String> {
 
 #[cfg(desktop)]
 #[tauri::command]
-fn restore_update_service(
+fn ensure_desktop_service(
   app: tauri::AppHandle,
   state: tauri::State<'_, SidecarState>,
   info: tauri::State<'_, RuntimeInfo>,
@@ -186,7 +188,7 @@ pub fn run() {
     .plugin(tauri_plugin_shell::init())
     .setup(|app| {
       #[cfg(desktop)]
-      start_service(app)?;
+      initialize_desktop_runtime(app)?;
 
       #[cfg(mobile)]
       app.manage(RuntimeInfo {
@@ -207,7 +209,7 @@ pub fn run() {
   #[cfg(desktop)]
   let builder = builder.invoke_handler(tauri::generate_handler![
     runtime_info, plaud::plaud_command, desktop_exports::export_document, desktop_exports::export_audio,
-    desktop_exports::pick_export_folder, stop_update_service, restore_update_service, restart_after_update
+    desktop_exports::pick_export_folder, stop_update_service, ensure_desktop_service, restart_after_update
   ]);
   #[cfg(mobile)]
   let builder = builder.invoke_handler(tauri::generate_handler![runtime_info, plaud::plaud_command]);

@@ -1,4 +1,4 @@
-import { getUpdateState, startDesktopUpdates, subscribeUpdate } from '@/lib/desktop-updates'
+import { ensureDesktopService, getUpdateState, startDesktopUpdates, subscribeUpdate } from '@/lib/desktop-updates'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { ArrowRight, Keyboard, Loader2, Radio, ScanLine, ShieldCheck, X } from "@/components/icons"
 import { Brand } from '@/components/Brand'
@@ -23,12 +23,13 @@ export function RuntimeGate({ children }: { children: ReactNode }) {
       .then(async config => {
         if (config.mode === 'desktop') {
           await startDesktopUpdates()
+          if (config.updaterEnabled) await ensureDesktopService()
           await waitForDesktop(config.serviceOrigin)
         }
         if (!disposed) setRuntime(config)
       })
       .catch(initError => {
-        if (!disposed) setError(initError instanceof Error ? initError.message : t('OpenPlod could not start.'))
+        if (!disposed) setError(initError instanceof Error ? initError.message : typeof initError === 'string' ? initError : t('OpenPlod could not start.'))
       })
     return () => { disposed = true }
   }, [])
