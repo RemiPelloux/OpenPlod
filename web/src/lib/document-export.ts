@@ -1,11 +1,12 @@
 import { invoke } from '@tauri-apps/api/core'
 import { getRuntime } from './runtime'
 import type { Recording } from './api'
+import { plaudModelFromSourceId, plaudModelName } from './plaud-model'
 
 export function recordingMarkdown(recording: Recording, text: string, version?: { versionId: string | null; origin: string | null }): string {
   const metadata = [
     `- Recorded: ${recording.recordedAt}`,
-    `- Source: ${recording.sourceProvider === 'plaud' ? 'Plaud Note Pro' : recording.sourceProvider || 'Audio import'}`,
+    `- Source: ${recording.sourceProvider === 'plaud' ? plaudModelName(plaudModelFromSourceId(recording.sourceRecordingId)) ?? 'Plaud' : recording.sourceProvider || 'Audio import'}`,
     `- Recording ID: ${recording.id}`,
     ...(version?.origin ? [`- Transcript origin: ${version.origin}`] : []),
     ...(version?.versionId ? [`- Transcript version: ${version.versionId}`] : []),

@@ -9,6 +9,7 @@ import { PlaudCloudImport } from '@/components/PlaudCloudImport'
 import { PlaudDeviceAuthorization } from '@/components/PlaudDeviceAuthorization'
 import { PlaudSystemCheck } from '@/components/PlaudSystemCheck'
 import { api, type DashboardStats, type DeviceRecording, type PlaudStatus } from '@/lib/api'
+import { plaudModelImage, plaudModelName, usePlaudModel } from '@/lib/plaud-model'
 import { formatDate, t, tn } from '@/i18n'
 import './desktop-plaud.css'
 
@@ -20,6 +21,9 @@ export function DesktopPlaud() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [sessions, setSessions] = useState<DeviceRecording[] | null>(null)
+  // Name and picture follow the recorder actually detected (or authorized), not a fixed model.
+  const model = usePlaudModel(status?.deviceModel, status)
+  const device = plaudModelName(model) ?? t('Plaud recorder')
   const [selected, setSelected] = useState<number[]>([])
   const [confirmation, setConfirmation] = useState<DeviceRecording[] | null>(null)
   const [downloading, setDownloading] = useState<number | null>(null)
@@ -104,16 +108,16 @@ export function DesktopPlaud() {
   ]
 
   return <div className="plaud-workspace">
-    <header className="plaud-page-heading"><div className="plaud-page-title"><span className="plaud-heading-icon"><Bluetooth /></span><div><h1>Plaud Note Pro</h1><p>{t('Device, recordings & imports')}</p></div></div>
+    <header className="plaud-page-heading"><div className="plaud-page-title"><span className="plaud-heading-icon"><Bluetooth /></span><div><h1>{device}</h1><p>{t('Device, recordings & imports')}</p></div></div>
       <div className="plaud-status-strip" role="status"><span className="plaud-state" data-verified={access}><i />{statusLabel}</span>{checkedAt && <span className="plaud-checked"><Clock3 />{t('Checked {time}', { time: formatDate(checkedAt, { hour: '2-digit', minute: '2-digit' }) })}</span>}</div>
     </header>
     {(error || notice) && <div className={`plaud-feedback ${error ? 'is-error' : ''}`} role={error ? 'alert' : 'status'}>{error ? <Radio /> : <Check />}<span>{error || notice}</span><IconButton label={t('Dismiss device message')} onClick={() => { setError(''); setNotice('') }}><X /></IconButton></div>}
     <div className="plaud-workspace-grid">
       <section className="plaud-device-overview" aria-label={t('Desktop Plaud connection')}>
-        <div className="plaud-product-image"><img src="/plaud-note-pro.png" alt={t('Plaud Note Pro recorder')} width="220" height="280" /></div>
-        <div className="plaud-device-info"><h2>{status?.deviceName || 'Plaud Note Pro'}</h2><p>{t('AI voice recorder')}</p>
-          <dl><div><dt><Bluetooth />Bluetooth</dt><dd className="plaud-state" data-verified={access}><i />{statusLabel}</dd></div><div><dt><FileAudio />{t('On device')}</dt><dd>{sessions === null ? t('Unknown') : tn(sessions.length, '{count} recording', '{count} recordings')}</dd></div><div><dt><ShieldCheck />{t('Original audio')}</dt><dd>{t('Kept on Plaud')}</dd></div></dl>
-          <div className="plaud-connect-actions"><Button disabled={busy} onClick={() => void scan()}>{busy ? <Loader2 className="animate-spin" /> : status ? <RefreshCw /> : <Bluetooth />}{phase === 'scanning' ? t('Connecting') : phase === 'listing' ? t('Reading recordings') : status ? t('Refresh recordings') : t('Connect Note Pro')}</Button>
+        <div className="plaud-product-image"><img src={plaudModelImage(model)} alt={device} width="220" height="280" /></div>
+        <div className="plaud-device-info"><h2>{device}</h2><p>{status?.deviceName ? `${t('AI voice recorder')} · ${status.deviceName}` : t('AI voice recorder')}</p>
+          <dl><div><dt><Bluetooth />Bluetooth</dt><dd className="plaud-state" data-verified={access}><i />{statusLabel}</dd></div><div><dt><FileAudio />{t('On device')}</dt><dd>{sessions === null ? t('Unknown') : tn(sessions.length, '{count} recording', '{count} recordings')}</dd></div><div><dt><ShieldCheck />{t('Original audio')}</dt><dd>{t('Kept on Plaud')}</dd></div>{status?.deviceSerial && <div><dt><Radio />{t('Serial number')}</dt><dd>{status.deviceSerial}</dd></div>}</dl>
+          <div className="plaud-connect-actions"><Button disabled={busy} onClick={() => void scan()}>{busy ? <Loader2 className="animate-spin" /> : status ? <RefreshCw /> : <Bluetooth />}{phase === 'scanning' ? t('Connecting') : phase === 'listing' ? t('Reading recordings') : status ? t('Refresh recordings') : t('Connect {device}', { device })}</Button>
             {busy && <IconButton label={t('Cancel device operation')} onClick={() => void cancel()}><X /></IconButton>}</div>
           <div className="plaud-secondary-actions"><Button size="sm" variant="outline" disabled={busy || !pending.length} onClick={() => setConfirmation(pending)}><Download />{t('Import new')}</Button><Button asChild variant="outline" size="sm"><Link to="/recordings"><FolderOpen />{t('Open library')}</Link></Button></div>
         </div>
@@ -122,10 +126,10 @@ export function DesktopPlaud() {
         <dl>{states.map(({ icon: Icon, name, value, ok }) => <div key={name}><dt><Icon />{name}</dt><dd className="plaud-state" data-verified={ok}><i />{value}</dd></div>)}</dl>
         {status?.detail && <details className="plaud-diagnostics"><summary>{t('Connection details')}</summary><p>{status.detail}</p></details>}
       </section>
-      <section className="plaud-device-recordings" aria-label={t('Recordings on Note Pro')} ref={recordingSection}>
-        <header className="plaud-section-heading"><span className="plaud-section-icon"><FileAudio /></span><div><h2>{t('On your Note Pro')}</h2><p>{sessions === null ? t('Recording count unknown') : tn(sessions.length, '{count} recording / {pending} new', '{count} recordings / {pending} new', { pending: pending.length })}</p></div><Button size="sm" disabled={busy || !selected.length} onClick={() => setConfirmation(pending.filter(session => selected.includes(session.sessionId)))}><Download /><span>{selected.length ? t('Import selected ({count})', { count: selected.length }) : t('Import selected')}</span></Button></header>
-        {sessions === null ? <div className="plaud-recordings-empty">{busy ? <Loader2 className="animate-spin" /> : <Bluetooth />}<h3>{busy ? t('Reading your Note Pro') : t('Connect to see recordings')}</h3><p>{status && !status.directTransferAvailable ? t('Device authorization is not configured on this computer.') : error ? t('The device list is unavailable. No recording count has been reported.') : t('No recording list has been received yet.')}</p>{!busy && <Button variant="outline" size="sm" onClick={() => void scan()}><RefreshCw />{error ? t('Try again') : t('Check device')}</Button>}</div>
-          : sessions.length === 0 ? <div className="plaud-recordings-empty"><FileAudio /><h3>{t('No completed recordings returned')}</h3><p>{t('Finish a recording on the Note Pro, then refresh.')}</p></div> : <>
+      <section className="plaud-device-recordings" aria-label={t('Recordings on {device}', { device })} ref={recordingSection}>
+        <header className="plaud-section-heading"><span className="plaud-section-icon"><FileAudio /></span><div><h2>{t('On your {device}', { device })}</h2><p>{sessions === null ? t('Recording count unknown') : tn(sessions.length, '{count} recording / {pending} new', '{count} recordings / {pending} new', { pending: pending.length })}</p></div><Button size="sm" disabled={busy || !selected.length} onClick={() => setConfirmation(pending.filter(session => selected.includes(session.sessionId)))}><Download /><span>{selected.length ? t('Import selected ({count})', { count: selected.length }) : t('Import selected')}</span></Button></header>
+        {sessions === null ? <div className="plaud-recordings-empty">{busy ? <Loader2 className="animate-spin" /> : <Bluetooth />}<h3>{busy ? t('Reading your {device}', { device }) : t('Connect to see recordings')}</h3><p>{status && !status.directTransferAvailable ? t('Device authorization is not configured on this computer.') : error ? t('The device list is unavailable. No recording count has been reported.') : t('No recording list has been received yet.')}</p>{!busy && <Button variant="outline" size="sm" onClick={() => void scan()}><RefreshCw />{error ? t('Try again') : t('Check device')}</Button>}</div>
+          : sessions.length === 0 ? <div className="plaud-recordings-empty"><FileAudio /><h3>{t('No completed recordings returned')}</h3><p>{t('Finish a recording on the {device}, then refresh.', { device })}</p></div> : <>
             <label className="plaud-select-all"><input type="checkbox" aria-label={t('Select all new recordings')} checked={pending.length > 0 && selected.length === pending.length} ref={node => { if (node) node.indeterminate = selected.length > 0 && selected.length < pending.length }} disabled={busy || !pending.length} onChange={event => setSelected(event.target.checked ? pending.map(session => session.sessionId) : [])} /><span>{t('Select all new')}</span><small>{t('{count} on device', { count: sessions.length })}</small></label>
             <div className="plaud-session-list">{sessions.map(session => <div className="plaud-session" key={session.sessionId}>
               <input type="checkbox" aria-label={t('Select recording {id}', { id: session.sessionId })} disabled={busy || !!session.recordingId} checked={selected.includes(session.sessionId)} onChange={event => setSelected(current => event.target.checked ? [...current, session.sessionId] : current.filter(id => id !== session.sessionId))} />

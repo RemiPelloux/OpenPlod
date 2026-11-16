@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { deviceCommand, supportsPlaudDevice, vaultArguments, type DeviceSnapshot } from '@/lib/plaud-device'
 import { formatDuration } from '@/lib/utils'
 import { DesktopPlaud } from './DesktopPlaud'
+import { plaudModelFromSerial, plaudModelName } from '@/lib/plaud-model'
 import { PhoneAuthorization } from '@/components/PlaudAuthorization'
 import { formatDate, t } from '@/i18n'
 
@@ -92,22 +93,23 @@ export function DevicesPage() {
     window.dispatchEvent(new CustomEvent('plaud:sync-complete'))
   })
 
+  const device = plaudModelName(plaudModelFromSerial(snapshot?.serial)) ?? t('Plaud recorder')
   const localIds = new Set(snapshot?.localRecordings.map(row => row.sourceRecordingId))
   const connecting = snapshot?.busy
   const status = !snapshot ? t('Checking connection...') : snapshot.state === 'ready'
     ? snapshot.listLoaded ? t('{count} on device', { count: snapshot.files.length }) : t('Reading recordings...')
-    : snapshot?.state === 'connecting' ? t('Authenticating Note Pro...')
+    : snapshot?.state === 'connecting' ? t('Authenticating {device}...', { device })
       : snapshot?.state === 'scanning' ? t('Searching nearby...')
         : snapshot?.state === 'authenticating' ? t('Verifying device authorization...') : t('Disconnected')
 
   if (!supported) return <DesktopPlaud />
 
   return <div className="device-page">
-    <header className="device-heading"><div><h1>Plaud</h1><p>Note Pro</p></div><Bluetooth aria-hidden="true" /></header>
+    <header className="device-heading"><div><h1>Plaud</h1><p>{device}</p></div><Bluetooth aria-hidden="true" /></header>
     <>
       {snapshot && !snapshot.configured && <PhoneAuthorization onDone={() => void refresh()} />}
       <section className="device-connection" aria-label={t('Plaud connection')}>
-        <div><h2>{status}</h2><p>{snapshot?.serial || 'Plaud Note Pro'}{snapshot?.battery != null ? ` · ${t('{percent}% battery', { percent: snapshot.battery })}` : ''}</p></div>
+        <div><h2>{status}</h2><p>{snapshot?.serial || device}{snapshot?.battery != null ? ` · ${t('{percent}% battery', { percent: snapshot.battery })}` : ''}</p></div>
         {snapshot?.state === 'ready' ? <div className="device-actions">
           <Button variant="ghost" size="icon" disabled={!!busy || snapshot.downloading} title={t('Refresh device recordings')} aria-label={t('Refresh device recordings')} onClick={() => void run('Refreshing', () => deviceCommand('refresh'))}><RefreshCw /></Button>
           <Button variant="ghost" size="icon" disabled={!!busy || snapshot.downloading} title={t('Disconnect device')} aria-label={t('Disconnect device')} onClick={() => void run('Disconnecting', () => deviceCommand('disconnect'))}><Unplug /></Button>
@@ -120,7 +122,7 @@ export function DevicesPage() {
         <Bluetooth /><span>{device.name}<small>{device.serial}</small></span><span>{t('Connect')}</span>
       </button>)}
       {snapshot?.state === 'ready' && <section className="device-section">
-        <div className="device-section-heading"><h2>{t('On Note Pro')}</h2><Button size="sm" disabled={!!busy || selected.length === 0 || snapshot.downloading} onClick={() => void downloadSelected()}><Download />{selected.length ? t('Download ({count})', { count: selected.length }) : t('Download')}</Button></div>
+        <div className="device-section-heading"><h2>{t('On {device}', { device })}</h2><Button size="sm" disabled={!!busy || selected.length === 0 || snapshot.downloading} onClick={() => void downloadSelected()}><Download />{selected.length ? t('Download ({count})', { count: selected.length }) : t('Download')}</Button></div>
         {!snapshot.listLoaded ? <p className="device-muted">{snapshot.error ? t('Recording list unavailable') : t('Reading device storage...')}</p> : snapshot.files.length === 0 ? <p className="device-muted">{t('No completed recordings returned by the device.')}</p> : snapshot.files.map(file => {
           const downloaded = localIds.has(`${snapshot.serial}:${file.sessionId}`)
           return <label className="device-recording-row" key={file.sessionId}>

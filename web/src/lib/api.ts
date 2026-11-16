@@ -337,6 +337,8 @@ export interface PlaudStatus {
   syncPath: string | null
   deviceIdentifier: string | null
   deviceSerial: string | null
+  /** Model resolved from the serial prefix (`note`, `notepro`, `notepin`, …), when known. */
+  deviceModel: string | null
   protocolVersion: number | null
   /** Host operating system the vault service runs on. */
   platform: string
