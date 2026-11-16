@@ -11,14 +11,17 @@ export const PLAUD_PROJECTS = new Set([860, 880, 881, 882, 883, 888]);
 
 export function parseNoteProAdvertisement(data: Uint8Array) {
   const bytes = Buffer.from(data);
-  // The byte at offset 10 differs per model (8 on the Note Pro, 9 on the Note),
-  // so it is not a format marker and must not be used to reject a payload.
+  // Byte 10 differs per model (8 on the Note Pro, 9 on the Note). It is the serial
+  // length, not a format marker, so it must not be used to reject a payload.
   if (bytes.length < 22 || bytes[2] !== 2 || bytes[5] !== 4) {
     throw new Error('Unsupported or truncated Plaud advertisement');
   }
   const project = bytes.readUInt16LE(3);
   if (!PLAUD_PROJECTS.has(project)) throw new Error(`Not a supported Plaud project (${project})`);
-  return { project, serial: bytes.subarray(11, 19).toString('hex').toUpperCase(),
+  // Byte 10 is the serial length: 8 bytes (16 hex) on the Note Pro, 9 bytes (18 hex)
+  // on the Plaud Note, which matches the serial printed in the Plaud app.
+  const serialLength = bytes[10] === 9 ? 9 : 8;
+  return { project, serial: bytes.subarray(11, 11 + serialLength).toString('hex').toUpperCase(),
     protocolVersion: bytes.readUInt16LE(20), encrypted: bytes.readUInt16LE(20) >= 20 };
 }
 

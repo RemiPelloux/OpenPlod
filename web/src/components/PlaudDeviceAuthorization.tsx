@@ -29,13 +29,12 @@ export function PlaudDeviceAuthorization({ status, onAuthorized, variant = 'page
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
-  // The advertised serial is enough for a Note Pro. A Plaud Note advertises a
-  // shorter string than the one its account is registered under, so the detected
-  // value is only a default the user can correct.
+  // The advertisement carries the full registry serial (16 characters on a Note Pro,
+  // 18 on a Plaud Note). It is prefilled as a default the user can still correct.
   useEffect(() => { setSerial(status?.deviceSerial ?? '') }, [status?.deviceSerial])
 
   const model = plaudModelName(identity?.deviceType ?? status?.deviceModel)
-  const manualSerial = needsManualSerial(plaudModelName(status?.deviceModel), status?.deviceSerial)
+  const manualSerial = needsManualSerial(status?.deviceModel ?? null, status?.deviceSerial)
 
   const load = useCallback(async () => {
     try { setIdentity(await api.getPlaudIdentity()) } catch (failure) { setError(failure instanceof Error ? failure.message : t('Could not read the recorder authorization.')) }

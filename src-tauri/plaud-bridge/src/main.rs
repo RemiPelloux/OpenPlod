@@ -298,11 +298,11 @@ async fn run_scan() -> Result<(), String> {
 
 /// Best-effort decode of the Plaud advertisement payload.
 ///
-/// Mirrors `parseNoteProAdvertisement` in `src/sync/plaud-protocol.ts`: the
-/// serial lives at bytes 11..19 and the protocol version at byte 20.  The
-/// project code selects the model (860 Plaud One, 880 NotePin, 881/883 Note
-/// Pro, 882 NotePin S, 888 Note), and byte 10 differs per model, so it is not
-/// a format marker.
+/// Mirrors `parseNoteProAdvertisement` in `src/sync/plaud-protocol.ts`: byte 10
+/// is the serial length (8 on the Note Pro, 9 on the Plaud Note), the serial
+/// starts at byte 11 and the protocol version sits at byte 20.  The project code
+/// selects the model (860 Plaud One, 880 NotePin, 881/883 Note Pro, 882 NotePin
+/// S, 888 Note).
 fn parse_note_pro_advertisement(manufacturer_data: &[Value]) -> (Option<String>, Option<u16>) {
     for entry in manufacturer_data {
         let Some(encoded) = entry.get("data").and_then(Value::as_str) else {
@@ -318,7 +318,9 @@ fn parse_note_pro_advertisement(manufacturer_data: &[Value]) -> (Option<String>,
         if !matches!(project, 860 | 880 | 881 | 882 | 883 | 888) {
             continue;
         }
-        let serial = bytes[11..19]
+        // Byte 10 is the serial length: 8 on the Note Pro, 9 on the Plaud Note.
+        let serial_length = if bytes[10] == 9 { 9 } else { 8 };
+        let serial = bytes[11..11 + serial_length]
             .iter()
             .map(|byte| format!("{byte:02X}"))
             .collect::<String>();
