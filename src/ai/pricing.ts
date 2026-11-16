@@ -16,7 +16,8 @@ export type SpeechPrice = { usdPerMinute: number | null; note?: string };
 export type TextPrice = { usdPerMillionInput: number; usdPerMillionOutput: number } | null;
 
 export const speechPrices: Record<SpeechProvider, Record<string, SpeechPrice>> = {
-  whisper: { base: { usdPerMinute: 0, note: 'Runs on this computer.' }, small: { usdPerMinute: 0, note: 'Runs on this computer.' }, medium: { usdPerMinute: 0, note: 'Runs on this computer.' } },
+  whisper: { base: { usdPerMinute: 0, note: 'Runs on this computer.' }, small: { usdPerMinute: 0, note: 'Runs on this computer.' }, medium: { usdPerMinute: 0, note: 'Runs on this computer.' },
+    'large-v3-turbo': { usdPerMinute: 0, note: 'Runs on this computer.' }, 'large-v3': { usdPerMinute: 0, note: 'Runs on this computer.' } },
   mistral: { 'voxtral-mini-latest': { usdPerMinute: 0.001 } },
   deepgram: { 'nova-2': { usdPerMinute: null, note: 'Plan- and add-on-dependent; not estimated.' }, 'nova-3': { usdPerMinute: null, note: 'Plan- and add-on-dependent; not estimated.' } },
   openai: { 'whisper-1': { usdPerMinute: 0.006 }, 'gpt-4o-transcribe': { usdPerMinute: 0.006, note: 'OpenAI documents this as an estimated per-minute cost of token billing.' }, 'gpt-4o-mini-transcribe': { usdPerMinute: 0.003, note: 'OpenAI documents this as an estimated per-minute cost of token billing.' } },

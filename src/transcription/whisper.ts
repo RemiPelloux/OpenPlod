@@ -7,10 +7,22 @@ import { tmpdir, homedir } from 'node:os';
 import { z } from 'zod';
 import type { TranscriptionEngine, TranscriptionOptions, TranscriptionResult } from './types';
 import { transcriptionFailure } from './openai';
+import { speechCapabilities } from '../ai/capabilities';
 
 const run = promisify(execFile);
 const binary = process.env.WHISPER_BIN || '/opt/homebrew/bin/whisper-cli';
-const models = process.env.WHISPER_MODELS_DIR || join(homedir(), 'clawd/models/whisper');
+/** Earlier releases defaulted to this folder; it stays a fallback so existing installs keep working. */
+const LEGACY_MODELS_DIR = join(homedir(), 'clawd/models/whisper');
+
+/** First folder that holds `ggml-<model>.bin`: the configured one, then the legacy default. */
+export function resolveWhisperModel(model: string, configured = process.env.WHISPER_MODELS_DIR, exists: (path: string) => boolean = existsSync): string | null {
+  for (const directory of [configured, LEGACY_MODELS_DIR]) {
+    if (!directory) continue;
+    const path = join(directory, `ggml-${model}.bin`);
+    if (exists(path)) return path;
+  }
+  return null;
+}
 const resultSchema = z.object({ transcription: z.array(z.object({ text: z.string(), offsets: z.object({ from: z.number().nonnegative(), to: z.number().nonnegative() }) })) });
 /** whisper.cpp takes one initial prompt; vocabulary is appended to it so names are spelled as given. */
 export function whisperPrompt(options: TranscriptionOptions): string[] {
@@ -23,9 +35,9 @@ export class WhisperEngine implements TranscriptionEngine {
   async transcribeFile(path: string, options: TranscriptionOptions = {}): Promise<TranscriptionResult> {
     if (!this.isAvailable()) return transcriptionFailure(this.name, 'Install whisper-cpp before local transcription.');
     const model = options.model || 'base';
-    if (!['base', 'small', 'medium'].includes(model)) return transcriptionFailure(this.name, 'Select a supported multilingual Whisper model.');
-    const modelPath = join(models, `ggml-${model}.bin`);
-    if (!existsSync(modelPath)) return transcriptionFailure(this.name, `Install ggml-${model}.bin in WHISPER_MODELS_DIR before transcription. No model or audio was downloaded.`);
+    if (!(speechCapabilities.whisper.models as readonly string[]).includes(model)) return transcriptionFailure(this.name, 'Select a supported multilingual Whisper model.');
+    const modelPath = resolveWhisperModel(model);
+    if (!modelPath) return transcriptionFailure(this.name, `Install ggml-${model}.bin in WHISPER_MODELS_DIR before transcription. No model or audio was downloaded.`);
     const directory = await mkdtemp(join(tmpdir(), 'openplod-whisper-'));
     const signal = AbortSignal.any([AbortSignal.timeout(600000), ...(options.signal ? [options.signal] : [])]);
     try {
